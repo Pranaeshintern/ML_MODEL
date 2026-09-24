@@ -1,0 +1,11 @@
+# Inference only. No scikit-learn, no joblib - the model ships as a portable
+# XGBoost booster.
+numpy>=1.24
+scipy>=1.10
+xgboost>=2.0
+
+# Only needed for server.py (the HTTP service and test page).
+fastapi>=0.110
+uvicorn>=0.27
+python-multipart>=0.0.9
+soundfile>=0.12
