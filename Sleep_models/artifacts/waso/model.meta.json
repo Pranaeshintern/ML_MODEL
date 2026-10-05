@@ -1,0 +1,149 @@
+{
+  "layer": "waso",
+  "task": "post-onset WASO band from accelerometry",
+  "epoch_feature_order": [
+    "act_mean",
+    "act_p95",
+    "jerk_rms",
+    "mag_std",
+    "still_frac",
+    "n_moves",
+    "posture_delta",
+    "posture_range",
+    "zcr",
+    "bp_lo",
+    "bp_mid",
+    "bp_hi",
+    "coverage"
+  ],
+  "context_feature_order": [
+    "act_mean",
+    "act_p95",
+    "jerk_rms",
+    "mag_std",
+    "still_frac",
+    "n_moves",
+    "posture_delta",
+    "posture_range",
+    "zcr",
+    "bp_lo",
+    "bp_mid",
+    "bp_hi",
+    "coverage",
+    "act_mean_mean5",
+    "act_mean_mean21",
+    "act_mean_max5",
+    "still_frac_mean5",
+    "still_frac_mean21",
+    "still_frac_max5",
+    "n_moves_mean5",
+    "n_moves_mean21",
+    "n_moves_max5",
+    "posture_delta_mean5",
+    "posture_delta_mean21",
+    "posture_delta_max5",
+    "act_mean_rel"
+  ],
+  "night_feature_order": [
+    "n_epochs_min",
+    "pwake_mean",
+    "pwake_std",
+    "pwake_sum_min",
+    "pwake_frac_gt0.3",
+    "pwake_frac_gt0.5",
+    "pwake_frac_gt0.7",
+    "pwake_frac_gt0.9",
+    "pwake_runs",
+    "pwake_longest_run_min",
+    "still_longest_run_min",
+    "act_mean_rel_q50",
+    "act_mean_rel_q75",
+    "act_mean_rel_q90",
+    "act_mean_rel_q95",
+    "act_mean_rel_q99",
+    "act_p95_rel_q50",
+    "act_p95_rel_q75",
+    "act_p95_rel_q90",
+    "act_p95_rel_q95",
+    "act_p95_rel_q99",
+    "jerk_rms_rel_q50",
+    "jerk_rms_rel_q75",
+    "jerk_rms_rel_q90",
+    "jerk_rms_rel_q95",
+    "jerk_rms_rel_q99",
+    "mag_std_rel_q50",
+    "mag_std_rel_q75",
+    "mag_std_rel_q90",
+    "mag_std_rel_q95",
+    "mag_std_rel_q99",
+    "still_frac_mean",
+    "n_moves_mean",
+    "n_moves_per_hr",
+    "posture_delta_mean",
+    "posture_gt10_per_hr",
+    "posture_gt20_per_hr",
+    "posture_gt40_per_hr",
+    "posture_range_q90",
+    "coverage_mean"
+  ],
+  "normalised": true,
+  "band_edges": [
+    20.0,
+    45.0,
+    90.0
+  ],
+  "onset_source": "layer1",
+  "grid_hz": 50.0,
+  "band_bounds_min": {
+    "minimal": [
+      0.0,
+      20.0
+    ],
+    "some": [
+      20.0,
+      45.0
+    ],
+    "notable": [
+      45.0,
+      90.0
+    ],
+    "high": [
+      90.0,
+      null
+    ]
+  },
+  "observed_iqr_min": {
+    "minimal": [
+      6.0,
+      15.0
+    ],
+    "some": [
+      23.875,
+      35.625
+    ],
+    "notable": [
+      50.0,
+      73.0
+    ],
+    "high": [
+      93.5,
+      150.0
+    ]
+  },
+  "cv": {
+    "exact": 0.5491329479768786,
+    "within_1": 0.9075144508670521,
+    "band_mae": 0.5491329479768786,
+    "spearman_waso": 0.6353675247818713
+  },
+  "baseline_constant": {
+    "exact": 0.49421965317919075,
+    "within_1": 0.7485549132947977,
+    "band_mae": 0.846820809248555,
+    "spearman_waso": 0.0
+  },
+  "trained_on": {
+    "nights": 346,
+    "subjects": 147
+  }
+}

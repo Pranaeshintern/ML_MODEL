@@ -1,0 +1,99 @@
+{
+ "opset_nn": 17,
+ "opset_tree": 15,
+ "parity": [
+  {
+   "model": "layer1 booster (all)",
+   "rows": 9743,
+   "max_abs_diff": 3.2782554626464844e-07,
+   "mean_abs_diff": 1.9669153049005493e-08,
+   "nan_rows": "8346/9743"
+  },
+  {
+   "model": "layer1 booster (NaN only)",
+   "rows": 8346,
+   "max_abs_diff": 3.2782554626464844e-07,
+   "mean_abs_diff": 1.85863003415932e-08
+  },
+  {
+   "model": "layer1 calibrated",
+   "rows": 9743,
+   "max_abs_diff": 1.391053219912397e-05,
+   "mean_abs_diff": 1.8216027279874642e-08,
+   "gate_0.7_disagree": 0,
+   "gate_0.5_disagree": 0
+  },
+  {
+   "model": "layer2 stage probs",
+   "rows": 1110,
+   "max_abs_diff": 1.3709068298339844e-06,
+   "mean_abs_diff": 1.3709068298339844e-06,
+   "nights": 40,
+   "sleep_argmax_agree": "1110/1110"
+  },
+  {
+   "model": "waso epoch scorer",
+   "rows": 52588,
+   "max_abs_diff": 0.10182792305817581,
+   "mean_abs_diff": 0.0005158882194813077,
+   "merge_0.40_disagree": 18
+  },
+  {
+   "model": "waso band head >20 min",
+   "rows": 60,
+   "max_abs_diff": 7.1972237503104e-08,
+   "mean_abs_diff": 2.7206251347379937e-08
+  },
+  {
+   "model": "waso band head >45 min",
+   "rows": 60,
+   "max_abs_diff": 7.368318262479523e-08,
+   "mean_abs_diff": 2.4640755530262735e-08
+  },
+  {
+   "model": "waso band head >90 min",
+   "rows": 60,
+   "max_abs_diff": 8.136121640300864e-08,
+   "mean_abs_diff": 2.7257545730631842e-08
+  },
+  {
+   "model": "waso band (end to end)",
+   "rows": 60,
+   "bands_identical": "60/60"
+  },
+  {
+   "model": "waso chain (onnx end to end)",
+   "nights": 353,
+   "bands_moved": [
+    [
+     "BIDS:Bidslab08|1",
+     0,
+     1
+    ],
+    [
+     "BIDS:Bidslab18|6",
+     1,
+     2
+    ],
+    [
+     "BIDS:Bidslab53|3",
+     1,
+     2
+    ]
+   ],
+   "band_identical": "350/353",
+   "epoch_wake_flips": "116/324237",
+   "minutes_per_night": 0.164
+  }
+ ],
+ "files": {
+  "layer1_calibrator.json": 2313,
+  "layer1_onset.onnx": 149328,
+  "layer2_stage.onnx": 684168,
+  "waso_band_head_20min.onnx": 52551,
+  "waso_band_head_45min.onnx": 52706,
+  "waso_band_head_90min.onnx": 52931,
+  "waso_epoch_scorer.onnx": 285672
+ },
+ "seconds": 74.5
+}
