@@ -15,6 +15,29 @@ python selftest.py
 Must print `PASS`. It compares this bundle's scores against the model as
 evaluated. A failure means the bundle will not behave like the validation report.
 
+## Model format
+
+Production runs **ONNX** (`model.onnx`, opset 15) through ONNX Runtime.
+
+| | |
+|---|---|
+| Input | `features`, float32, shape `[None, 55]` |
+| Feature order | `model_meta.json` -> `feature_names`. Must match exactly |
+| Output | `[label, probabilities]`; take probability of class 1 |
+| Decision | `probability > 0.699` |
+
+The export was verified against the original XGBoost booster before that booster
+was dropped from this bundle: over 20,000 random feature vectors the largest
+difference was 5.7e-7, with no decision flips at the threshold. `selftest.py`
+re-checks the 32 stored vectors on every run.
+
+To regenerate `model.onnx` you need the booster, which lives in git history
+(`snore_detect/model.ubj`) and in the training repository, plus `xgboost`,
+`onnx` and `onnxmltools`.
+
+ONNX Runtime has bindings for Android (Java/Kotlin), iOS (Swift/Objective-C),
+C/C++, C# and Python, so the same file serves every target.
+
 ## Use
 
 ```python
@@ -94,20 +117,26 @@ snore_detect/
   burst.py           L1 - burst duration
   audio_features.py  L1 - the 55 features
   aggregate.py       L3 - night verdict
-  model.ubj          400 trees, portable XGBoost booster
+  model.onnx         400 trees, opset 15 - the production model
   model_meta.json    threshold, window, feature order
   reference.npz      32 vectors for the self-test
-selftest.py
-server.py            optional reference HTTP service
+selftest.py          conformance check - run this first
 requirements.txt
 ```
 
-No scikit-learn and no joblib: the model ships as a portable booster, so it is
-not tied to a library version.
+Inference only. No training code, no datasets, no evaluation scripts, and no
+HTTP service.
+
+No scikit-learn, no joblib, and no XGBoost at runtime - production needs only
+ONNX Runtime, so the model is not tied to a training-library version.
 
 ## Size
 
-Model 862 KB on disk, ~254 KB gzipped. Runtime memory is one window —
+| | On disk | Gzipped |
+|---|---:|---:|
+| `model.onnx` | 570 KB | 100 KB |
+| Pipeline code (7 files) | 36 KB | |
+| **Whole folder** | **657 KB** | | Runtime memory is one window —
 40,000 floats, about 160 KB — plus the loaded trees. L0 processes in 1-second
 frames, so a full window is never held at once.
 

@@ -1,11 +1,4 @@
-# Inference only. No scikit-learn, no joblib - the model ships as a portable
-# XGBoost booster.
+# Inference only. No scikit-learn, no joblib.
 numpy>=1.24
 scipy>=1.10
-xgboost>=2.0
-
-# Only needed for server.py (the HTTP service and test page).
-fastapi>=0.110
-uvicorn>=0.27
-python-multipart>=0.0.9
-soundfile>=0.12
+onnxruntime>=1.17        # reads model.onnx
