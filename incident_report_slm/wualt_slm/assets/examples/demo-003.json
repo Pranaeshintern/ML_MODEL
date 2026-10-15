@@ -1,0 +1,66 @@
+{
+  "schema_version": "incident-v1",
+  "request_id": "demo-incident-3-v1",
+  "incident_id": "DEMO-003",
+  "report_number": "WLT-DEMO-003",
+  "reported_at": "2026-10-14T08:43:00+05:30",
+  "incident_start": "2026-10-14T08:42:10+05:30",
+  "incident_type": "SOS activation; surrounding situation unknown",
+  "timezone": "Asia/Kolkata",
+  "observation_window": {
+    "start": "2026-10-14T08:42:00+05:30",
+    "end": "2026-10-14T08:43:00+05:30",
+    "context": "Morning"
+  },
+  "officer": {
+    "name": "Demo Officer C",
+    "officer_id": "DEMO-019",
+    "unit": "Demo Station"
+  },
+  "wearer": {
+    "wearer_id": "DEMO-USER-03",
+    "contact": "+91 XXXXX XXXXX",
+    "guardian_name": "Demo Guardian 03",
+    "guardian_contact": "+91 XXXXX XXXXX"
+  },
+  "location": {
+    "latitude": 12.968,
+    "longitude": 77.587,
+    "fixed_at": "2026-10-14T08:34:00+05:30",
+    "accuracy_m": 80,
+    "last_known": true
+  },
+  "physiology": {
+    "hr_min_bpm": 74,
+    "hr_max_bpm": 82,
+    "reference_median_bpm": 78
+  },
+  "motion": {
+    "observation": "Minimal movement during the 60-second window."
+  },
+  "audio": {
+    "received": false,
+    "reliability": "unavailable"
+  },
+  "button": {
+    "state": "sos",
+    "at": "2026-10-14T08:42:10+05:30"
+  },
+  "events": [
+    {
+      "source_id": "demo-3-event-1",
+      "at": "2026-10-14T08:42:10+05:30",
+      "observation": "An SOS activation was recorded. No audio was received. Motion was minimal; heart rate remained between 74 and 82 bpm. No fresh location or wearer response was supplied."
+    }
+  ],
+  "assessment": {
+    "context": "insufficient_context",
+    "provenance": "Supplied fictional reference scenario; illustrative, not a validated score"
+  },
+  "limitations": [
+    "No HRV supplied"
+  ],
+  "follow_up": "Apply the configured SOS procedure and request a fresh location.",
+  "recorded_status": "No alert sent in this sample; no acknowledgement or cancellation recorded.",
+  "synthetic": true
+}

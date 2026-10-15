@@ -1,0 +1,7 @@
+include .env.example
+include .dockerignore
+include Dockerfile
+include requirements.txt
+include requirements-tested.txt
+recursive-include scripts *.py
+recursive-include tests *.py

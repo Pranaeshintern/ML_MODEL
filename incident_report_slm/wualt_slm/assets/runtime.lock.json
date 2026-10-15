@@ -1,0 +1,10 @@
+{
+  "model_id": "Qwen/Qwen3-1.7B-GGUF",
+  "model_revision": "90862c4b9d2787eaed51d12237eafdfe7c5f6077",
+  "model_file": "Qwen3-1.7B-Q8_0.gguf",
+  "model_sha256": "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
+  "model_bytes": 1834426016,
+  "runtime_tag": "b11582",
+  "runtime_url": "https://github.com/ggml-org/llama.cpp/releases/download/b11582/llama-b11582-bin-win-vulkan-x64.zip",
+  "runtime_sha256": "e08bf0deab30aea9c7925fefad51c78e90dc1cce945221839d3a5f6a18d6c37e"
+}
