@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wualt-incident-slm"
-version = "0.5.0"
+version = "0.6.0"
 description = "Pretrained SLM wrapper for the WUALT colour-coded incident report"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,6 +15,7 @@ dependencies = [
   "uvicorn>=0.30,<1",
   "tzdata>=2025.1",
   "reportlab>=4.4,<5",
+  "uharfbuzz>=0.39,<1",
 ]
 
 [project.optional-dependencies]
@@ -27,7 +28,7 @@ wualt-slm = "wualt_slm.cli:main"
 include = ["wualt_slm*"]
 
 [tool.setuptools.package-data]
-wualt_slm = ["assets/*.json", "assets/examples/*.json", "assets/web/*.html", "assets/web/*.css", "assets/web/*.js"]
+wualt_slm = ["assets/*.json", "assets/examples/*.json", "assets/web/*.html", "assets/web/*.css", "assets/web/*.js", "assets/fonts/*.ttf", "assets/fonts/*.txt", "assets/fonts/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

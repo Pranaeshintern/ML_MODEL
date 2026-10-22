@@ -53,7 +53,7 @@ def test_inference_uses_two_json_calls_and_keeps_keys_out_of_prompts(monkeypatch
         assert request.headers["Authorization"] == "Bearer fake-test-key"
         assert "fake-test-key" not in request.content.decode()
         section = json.loads(payload["messages"][1]["content"])["section"]
-        result = {"text": "Recorded SOS." if section == "description" else "Possible distress; urgent SOS handling is required.", "evidence_ids": ["B"] if section == "description" else ["C", "B"]}
+        result = {"text": "Recorded SOS." if section == "description" else "The supplied assessment is Possible distress. Rapid, irregular movement and received but limited audio with barking provide context. Cause and safety remain unconfirmed. Urgent SOS handling remains required.", "evidence_ids": ["B"] if section == "description" else ["C", "M", "A", "L", "B"]}
         return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(result)}}]})
     original = httpx.Client
     monkeypatch.setattr(module.httpx, "Client", lambda **kwargs: original(transport=httpx.MockTransport(respond), **kwargs))

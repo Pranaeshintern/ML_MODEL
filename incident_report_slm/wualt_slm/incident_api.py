@@ -18,7 +18,7 @@ from .schemas import SourceId,StrictModel
 from .settings import ASSET_ROOT,DATA_ROOT,allowed_origins
 
 backend=LlamaBackend();service=IncidentReportService(backend);store=IncidentStore(DATA_ROOT/'incident-reports.sqlite3');generation_lock=Lock()
-app=FastAPI(title='WUALT Incident Reports',version='0.5.0',description='Generate only the incident-report format supplied in WUALT_Colour_Coded_All_Sample_Reports.pdf.')
+app=FastAPI(title='WUALT Incident Reports',version='0.6.0',description='Generate only the incident-report format supplied in WUALT_Colour_Coded_All_Sample_Reports.pdf.')
 
 
 def authenticate(x_api_key:str|None=Header(default=None)):
@@ -59,7 +59,7 @@ async def missing(request,exc):return JSONResponse({'detail':'Report not found.'
 
 
 @app.get('/health')
-def health():return {'api':'ready','model_ready':backend.ready(),'prototype':True,'service':'wualt-incident-slm','workflow':'incident-report-only','version':'0.5.0','auth_required':bool(os.getenv('WUALT_API_KEY')),'database_configured':bool(os.getenv('WUALT_SOURCE_DB')),'server_configured':bool(os.getenv('WUALT_SOURCE_API_BASE'))}
+def health():return {'api':'ready','model_ready':backend.ready(),'prototype':True,'service':'wualt-incident-slm','workflow':'incident-report-only','version':'0.6.0','report_mode':service.mode,'auth_required':bool(os.getenv('WUALT_API_KEY')),'database_configured':bool(os.getenv('WUALT_SOURCE_DB')),'server_configured':bool(os.getenv('WUALT_SOURCE_API_BASE'))}
 
 
 @router.get('/incident-examples')
@@ -73,7 +73,9 @@ def create(data):
     try:
         if existing:=store.find(data.request_id,digest):return {**existing,'reused':True}
         try:report=service.generate(data)
-        except BackendUnavailable:raise HTTPException(503,'The model is busy. Retry the same request ID.',headers={'Retry-After':'3'})
+        except BackendUnavailable as exc:
+            if str(exc)=='model_busy':raise HTTPException(503,'The model is busy. Retry the same request ID.',headers={'Retry-After':'3'})
+            raise HTTPException(502,'Model generation failed; no fallback was substituted.')
         render_incident_pdf(report)
         return {**store.save(report,digest),'reused':False}
     finally:generation_lock.release()

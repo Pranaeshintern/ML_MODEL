@@ -11,3 +11,4 @@ pillow==12.3.0
 pytest==9.1.1
 pypdf==6.20.1
 build==1.6.1
+uharfbuzz==0.56.3

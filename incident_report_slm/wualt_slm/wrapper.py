@@ -15,9 +15,9 @@ class IncidentReporter:
     and validation_issues to distinguish model text from factual fallbacks.
     """
 
-    def __init__(self, model_url: str | None = None, *, api_key: str | None = None, backend=None):
+    def __init__(self, model_url: str | None = None, *, api_key: str | None = None, backend=None, mode: str | None = None):
         self.backend = backend if backend is not None else LlamaBackend(model_url, api_key=api_key)
-        self.service = IncidentReportService(self.backend)
+        self.service = IncidentReportService(self.backend, mode=mode)
 
     def generate(self, payload: Mapping[str, Any] | IncidentBundle) -> dict:
         data = payload if isinstance(payload, IncidentBundle) else IncidentBundle.model_validate(payload)

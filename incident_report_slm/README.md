@@ -83,7 +83,7 @@ response = httpx.post(
     "http://127.0.0.1:8000/v1/incident-reports",
     json=payload,
     # headers={"X-API-Key": configured_report_api_key},
-    timeout=260,
+    timeout=400,
 )
 response.raise_for_status()
 saved = response.json()
@@ -138,7 +138,7 @@ Set environment variables before starting the service. `.env.example` documents 
 flowchart LR
   Source[Backend snapshot or source adapter] --> Validate[Typed validation]
   Validate --> Facts[Exact fields and selected evidence]
-  Facts --> SLM[Pretrained Qwen3: two narrative calls]
+  Facts --> SLM[Pretrained Qwen3: two calls plus optional revision]
   SLM --> Checks[Narrative checks / factual fallback]
   Facts --> Render[Incident template]
   Checks --> Render
@@ -155,6 +155,27 @@ Inspect the output metadata:
 - `model_sections`, `validation_issues`, `prompt_version`, model revision and evidence IDs record what was used.
 
 The small pretrained model can make semantic errors. The checks catch several known contradictions but do not prove correctness; reports remain drafts for review. In the four-case Desktop validation, two cases retained a model interpretation and two required full fallback. These examples are demonstrations, not a quality benchmark. No training dataset or training job is included.
+
+See [the 83-scenario development comparison](evaluations/2026-10-22/README.md) for exact inputs, before/after outputs, remaining warnings and reproduction steps.
+
+### Interpretation quality and raw review
+
+The v3 interpretation prompt receives a dedicated qualitative evidence view. Heart-rate comparison, audio availability/reliability, location status and uncertainty are derived from typed fields. Untrusted free-text limitations stay in the source snapshot and PDF but are not treated as authoritative instructions for the interpretation. This prevents a supplied limitation such as "no physiology supplied" from overriding recorded heart-rate measurements.
+
+The model is asked to explain specific observations rather than repeat assessment labels or evidence IDs. A focused consistency check permits **one additional model attempt**, using the original evidence and explicit correction requirements. It never writes replacement prose. The wrapper selects the candidate with fewer detected substantive errors, then fewer format errors; ties keep the first attempt. `interpretation_attempts` records the number generated and `interpretation_selected_attempt` identifies the retained candidate. The maximum is three model calls overall: description, interpretation and one interpretation revision. Remaining issues are recorded in `validation_issues`; these checks cannot prove semantic correctness.
+
+For manual inspection with all fallback substitution disabled:
+
+```python
+reporter = IncidentReporter(model_url="http://127.0.0.1:8081", mode="raw_review")
+report = reporter.generate(payload)
+assert report["fallback_enabled"] is False
+assert report["generation_mode"] == "model_unvalidated"
+```
+
+For CLI/API use, set `WUALT_REPORT_MODE=raw_review` **before starting the process**. In this mode the final model text is kept even when flagged, and invalid model output or backend failure raises an error (HTTP 502), never a fallback report. Model-busy responses remain HTTP 503 with retry guidance. Inputs still undergo normal schema validation. Use a fresh request ID to generate a new report; an existing ID returns its saved report.
+
+The default `guarded` mode retains the existing fallback behavior. Raw-review JSON has `status="unvalidated_draft"`; its PDFs carry an explicit review banner. Sensor tables, priority, colour and layout are application-generated in both modes. The package includes licensed Noto Devanagari/Tamil fonts and HarfBuzz shaping for those scripts; it does not claim support for every script.
 
 ## CLI, packaging and tests
 
