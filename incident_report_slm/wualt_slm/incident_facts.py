@@ -1,5 +1,6 @@
 """Build the reference report's fields and evidence without model calculations."""
 from zoneinfo import ZoneInfo
+import re
 
 COLOURS={'RED':('#b62313','HIGH ABNORMALITY'),'YELLOW':('#f2c94c','MODERATE ABNORMALITY'),
          'GREEN':('#21673b','NO SIGNIFICANT ABNORMALITY DETECTED'),'GREY':('#586374','UNABLE TO ASSESS')}
@@ -80,14 +81,43 @@ def build_incident_view(data):
     if not physiological:limitations.append('Heart-rate data not supplied')
     limitations=list(dict.fromkeys(limitations))
     evidence=[]
-    def add(key,text):evidence.append({'id':key,'text':text})
+    def add(key,text,**metadata):evidence.append({'id':key,'text':text,**metadata})
     for i,event in enumerate(sorted(data.events,key=lambda e:e.at)):
         add(f'E{i+1:02}',f'{clock(event.at)}: {event.observation}')
-    for key,row in zip(('P','M','A','V','B'),sensor_rows):add(key,row['observation'])
-    add('G',gps['fix']+(' Last-known location; current position unconfirmed.' if gps['last_known'] else ''))
+    for key,row in zip(('P','M','A','V','B'),sensor_rows):
+        qualitative=row['observation']
+        if key=='P':
+            if not peak:qualitative='Heart-rate measurements are not supplied.'
+            elif p.reference_median_bpm is not None:
+                relation='above' if peak>p.reference_median_bpm else 'below' if peak<p.reference_median_bpm else 'equal to'
+                qualitative=f'The recorded heart rate is {relation} the supplied reference.'
+            else:qualitative='Heart-rate measurements are supplied; no reference measurement is supplied. The measurements alone do not establish cause or safety.'
+        elif key=='A':
+            qualitative=(f'Audio was received and reported {data.audio.reliability}. Supplied sound observation: {sound}' if data.audio.received else 'Audio was not received and is unavailable. This is missing data, not silence.')
+        elif key=='B':
+            qualitative=('A device SOS was recorded. Urgent SOS handling remains required.' if data.button.state=='sos' else 'No button press was recorded. Do not infer an SOS or safety.' if data.button.state=='none_recorded' else 'Button data is unavailable. Do not infer a recorded SOS or safety.')
+        # Leave exact clocks/durations in the source and description; they do
+        # not add qualitative interpretation and invite timestamp repetition.
+        if key in ('M','A','V'):
+            qualitative=re.sub(r'\s+at\s+\d{2}:\d{2}:\d{2}(?:\s+(?:IST|UTC))?', '', qualitative, flags=re.I)
+            qualitative=re.sub(r'\s+(?:during|across) the \d+-second window|\s+for \d+ (?:minutes?|seconds?)', '', qualitative, flags=re.I)
+        add(key,row['observation'],interpretation_text=qualitative)
+    add('G',gps['fix']+(' Last-known location; current position unconfirmed.' if gps['last_known'] else ''),
+        interpretation_text='Last-known location; current position unconfirmed.' if gps['last_known'] else 'No location was supplied.' if not data.location else 'A location fix was supplied.')
     if data.audio.transcript:add('T',transcript+' Transcript reliability: '+data.audio.reliability+'. Speaker identity is not established by a supplied label.')
-    add('C',f'Supplied contextual assessment: {label}. Review priority: {priority}. Colour: {colour}; illustrative, not a validated score.')
-    add('L','; '.join(limitations) or 'No additional limitations supplied.')
+    add('C',f'Supplied contextual assessment: {label}. Review priority: {priority}. Colour: {colour}; illustrative, not a validated score.',
+        interpretation_text=f'The supplied assessment is {label}.')
+    # Free-text limitations can contradict typed sensor presence or contain
+    # instructions. Retain them in the source/PDF, but give the model limits
+    # computed from typed fields for interpretation. Do not erase HR presence.
+    interpretation_limits=['Cause, intent and current safety remain unconfirmed.']
+    if not data.audio.received:interpretation_limits.append('Audio is unavailable; speaker and sound conclusions cannot be drawn.')
+    elif data.audio.reliability!='usable':interpretation_limits.append(f'Audio was received but is {data.audio.reliability}; sound and voice cues are uncertain, not absent.')
+    if data.audio.received and not data.audio.wearer_link_verified:interpretation_limits.append('The wearer-to-speaker link is unverified.')
+    if gps['last_known']:interpretation_limits.append('The last-known fix does not establish the current position.')
+    if not data.location:interpretation_limits.append('Location was not supplied.')
+    if not peak:interpretation_limits.append('Heart-rate measurements were not supplied.')
+    add('L','; '.join(limitations) or 'No additional limitations supplied.',interpretation_text=' '.join(interpretation_limits))
     event_summary=' '.join(e['text'] for e in evidence if e['id'].startswith('E'))
     if not event_summary:event_summary=f'{button_detail} {motion} {physiology} {sound}'
     if colour=='RED':interpretation='Possible distress is indicated by the supplied contextual assessment. The recorded observations provide context but do not establish an attack, injury or cause. Speaker identity remains unconfirmed.'

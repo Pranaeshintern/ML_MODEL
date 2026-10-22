@@ -167,3 +167,6 @@ class Narrative(StrictModel):
 class IncidentDraft(StrictModel):
     description: Narrative
     interpretation: Narrative
+    interpretation_attempts: int = Field(default=1,strict=True,ge=1,le=2)
+    interpretation_selected_attempt: int = Field(default=1,strict=True,ge=1,le=2)
+    interpretation_quality_issues: list[str] = Field(default_factory=list,max_length=25)

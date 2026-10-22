@@ -7,7 +7,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer, PageBreak, KeepTogether
-from .fonts import fonts
+from .fonts import fonts,script_text
 from .incident_facts import COLOURS
 
 WIDTH=A4[0]-44
@@ -16,10 +16,10 @@ WIDTH=A4[0]-44
 def report_story(report,size):
     data=report['input'];v=report['view'];n=report['narrative'];regular,bold=fonts()
     pdfmetrics.registerFontFamily(regular,normal=regular,bold=bold,italic=regular,boldItalic=bold)
-    style=ParagraphStyle('Incident',fontName=regular,fontSize=size,leading=size+1.6,spaceAfter=0,splitLongWords=True)
+    style=ParagraphStyle('Incident',fontName=regular,fontSize=size,leading=size+1.6,spaceAfter=0,splitLongWords=True,shaping=1)
     small=ParagraphStyle('Small',parent=style,fontSize=size-1,leading=size+.4)
     heading=ParagraphStyle('Heading',parent=style,fontName=bold)
-    def text(value):return escape(str(value if value is not None else 'Not supplied'))
+    def text(value):return script_text(value)
     def p(value,sty=style):return Paragraph(value,sty)
     def field(label,value):return p(f'<b>{text(label)}:</b> {text(value)}')
     def table(rows,widths=None,background=None):
@@ -35,6 +35,10 @@ def report_story(report,size):
     def section(title,content,background='#c6dcf7',light=False):
         story.extend([Spacer(1,2),KeepTogether([bar(title,background,light),Spacer(1,1),content[0]])]+content[1:])
     officer=data['officer'];person=data['wearer'];story=[]
+    if report.get('report_mode')=='raw_review':
+        story.append(p('<b>RAW MODEL OUTPUT - MANUAL REVIEW - FALLBACK DISABLED</b>',small))
+        story.append(p('Model wording is retained even when validation flags it.'+(' This is a fictional test report.' if data['synthetic'] else ''),small))
+        if report.get('review_scenario'):story.append(field('Test scenario',report['review_scenario']))
     story.append(table([
         [field('Report Number',v['report_number']),field('Time Reported',v['time_reported'])],
         [field('Date Reported',v['date_reported']),field('Reporting Officer',officer['name'])],
@@ -81,7 +85,7 @@ def render_incident_pdf(reports):
     sample=all(r['input']['synthetic'] for r in reports)
     def footer(canvas,doc):
         canvas.setFont(regular,6.5);canvas.setFillColor(colors.HexColor('#444444'))
-        label='WUALT | '+('FICTIONAL SAMPLE' if sample else 'DRAFT FOR REVIEW')+' | Colour labels are illustrative, not validated scores.'
+        label='WUALT | '+('RAW MODEL - UNVALIDATED' if any(r.get('report_mode')=='raw_review' for r in reports) else 'FICTIONAL SAMPLE' if sample else 'DRAFT FOR REVIEW')+' | Colour labels are illustrative, not validated scores.'
         canvas.drawCentredString(A4[0]/2,18,label);canvas.drawRightString(A4[0]-22,8,str(doc.page))
     doc=SimpleDocTemplate(stream,pagesize=A4,leftMargin=16,rightMargin=16,topMargin=16,bottomMargin=34,title='WUALT Incident Report',author='WUALT')
     doc.build(story,onFirstPage=footer,onLaterPages=footer)
