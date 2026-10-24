@@ -18,7 +18,7 @@ from .schemas import SourceId,StrictModel
 from .settings import ASSET_ROOT,DATA_ROOT,allowed_origins
 
 backend=LlamaBackend();service=IncidentReportService(backend);store=IncidentStore(DATA_ROOT/'incident-reports.sqlite3');generation_lock=Lock()
-app=FastAPI(title='WUALT Incident Reports',version='0.6.0',description='Generate only the incident-report format supplied in WUALT_Colour_Coded_All_Sample_Reports.pdf.')
+app=FastAPI(title='WUALT Incident Reports',version='0.11.0',description='Generate incident-v1 reference reports and incident-v2 contextual reports from physiology, transcript, keywords and optional activity/chat.')
 
 
 def authenticate(x_api_key:str|None=Header(default=None)):
@@ -47,7 +47,10 @@ async def bounded_request(request,call_next):
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_error(request,exc):return JSONResponse({'detail':[{'location':list(e['loc']),'type':e['type']} for e in exc.errors()]},status_code=422)
+async def validation_error(request,exc):
+    # Explain field failures without returning submitted values or exception context.
+    return JSONResponse({'detail':[{'location':list(e['loc']),'type':e['type'],'message':e['msg']}
+                                   for e in exc.errors()]},status_code=422)
 
 
 @app.exception_handler(Conflict)
@@ -59,11 +62,16 @@ async def missing(request,exc):return JSONResponse({'detail':'Report not found.'
 
 
 @app.get('/health')
-def health():return {'api':'ready','model_ready':backend.ready(),'prototype':True,'service':'wualt-incident-slm','workflow':'incident-report-only','version':'0.6.0','report_mode':service.mode,'auth_required':bool(os.getenv('WUALT_API_KEY')),'database_configured':bool(os.getenv('WUALT_SOURCE_DB')),'server_configured':bool(os.getenv('WUALT_SOURCE_API_BASE'))}
+def health():return {'api':'ready','model_ready':backend.ready(),'prototype':True,'service':'wualt-incident-slm','workflow':'incident-report-only','version':'0.11.0','schemas':['incident-v1','incident-v2'],'report_mode':service.mode,'auth_required':bool(os.getenv('WUALT_API_KEY')),'database_configured':bool(os.getenv('WUALT_SOURCE_DB')),'server_configured':bool(os.getenv('WUALT_SOURCE_API_BASE'))}
 
 
 @router.get('/incident-examples')
 def examples():return {'synthetic':True,'items':[{'incident_id':c.incident_id,'report_number':c.report_number,'incident_type':c.incident_type} for c in demo_cases()]}
+
+
+@router.get('/incident-input-example')
+def input_example():
+    return IncidentBundle.model_validate_json((ASSET_ROOT/'examples/physiology-v2.json').read_text(encoding='utf-8')).model_dump(mode='json')
 
 
 def create(data):

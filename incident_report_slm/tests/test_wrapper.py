@@ -1,3 +1,4 @@
+from model_fixtures import FixtureModel, draft
 from io import BytesIO
 import json
 
@@ -12,7 +13,7 @@ from wualt_slm.settings import ASSET_ROOT
 
 
 class Offline:
-    def generate_incident(self, evidence):
+    def generate_contextual_incident(self, evidence):
         raise BackendUnavailable("model_unavailable")
 
 
@@ -22,12 +23,12 @@ def fixture():
 
 def test_public_wrapper_returns_report_and_pdf_without_database_write(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    reporter = IncidentReporter(backend=Offline())
+    reporter = IncidentReporter(backend=FixtureModel(),mode='raw_review')
     report = reporter.generate(fixture())
-    assert report["generation_mode"] == "fallback"
+    assert report["generation_mode"] == "model_unvalidated"
     assert report["view"]["report_number"] == "WLT-DEMO-001"
     pdf = reporter.pdf(report)
-    assert len(PdfReader(BytesIO(pdf)).pages) == 1
+    assert len(PdfReader(BytesIO(pdf)).pages) >= 2
     assert list(tmp_path.iterdir()) == []
     assert reporter.generate(IncidentBundle.model_validate(fixture()))["view"]["colour"] == "RED"
 
@@ -35,7 +36,7 @@ def test_public_wrapper_returns_report_and_pdf_without_database_write(tmp_path, 
 def test_wrapper_rejects_unknown_source_and_bad_snapshot_ids(monkeypatch):
     import wualt_slm.incident_sources as sources
     monkeypatch.setattr(sources, "load_from_source", lambda *args: IncidentBundle.model_validate(fixture()))
-    reporter = IncidentReporter(backend=Offline())
+    reporter = IncidentReporter(backend=FixtureModel(),mode='raw_review')
     with pytest.raises(ValueError):
         reporter.generate_from_source("unknown", "DEMO-001", "request-1")
     with pytest.raises(ValueError):
@@ -44,7 +45,7 @@ def test_wrapper_rejects_unknown_source_and_bad_snapshot_ids(monkeypatch):
     assert report["input"]["request_id"] == "request-1"
 
 
-def test_inference_uses_two_json_calls_and_keeps_keys_out_of_prompts(monkeypatch):
+def test_inference_uses_only_interpretation_json_calls_and_keeps_keys_out_of_prompts(monkeypatch):
     import wualt_slm.backend as module
     captured = []
     def respond(request):
@@ -54,29 +55,29 @@ def test_inference_uses_two_json_calls_and_keeps_keys_out_of_prompts(monkeypatch
         assert "fake-test-key" not in request.content.decode()
         section = json.loads(payload["messages"][1]["content"])["section"]
         result = {"text": "Recorded SOS." if section == "description" else "The supplied assessment is Possible distress. Rapid, irregular movement and received but limited audio with barking provide context. Cause and safety remain unconfirmed. Urgent SOS handling remains required.", "evidence_ids": ["B"] if section == "description" else ["C", "M", "A", "L", "B"]}
-        return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(result)}}]})
+        return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": json.dumps({'sentences': [dict(result, kind='interpretation')]})}}]})
     original = httpx.Client
     monkeypatch.setattr(module.httpx, "Client", lambda **kwargs: original(transport=httpx.MockTransport(respond), **kwargs))
     backend = LlamaBackend("http://model.test", api_key="fake-test-key")
-    report = IncidentReporter(backend=backend).generate(fixture())
-    assert len(captured) == 2 and report["generation_mode"] == "model"
+    report = IncidentReporter(backend=backend,mode='raw_review').generate(fixture())
+    assert 1 <= len(captured) <= 2 and report["model_sections"] == ["interpretation"]
+    assert all(json.loads(p["messages"][1]["content"])["section"] == "analysis" for p in captured)
     assert captured[0]["response_format"]["type"] == "json_schema"
     assert all("Demo Guardian" not in json.dumps(p) for p in captured)
 
 
-def test_incomplete_model_output_is_an_explicit_fallback(monkeypatch):
+def test_incomplete_model_output_raises_without_fallback(monkeypatch):
     import wualt_slm.backend as module
     original = httpx.Client
     transport = httpx.MockTransport(lambda request: httpx.Response(200, json={"choices": [{"finish_reason": "length", "message": {"content": "{}"}}]}))
     monkeypatch.setattr(module.httpx, "Client", lambda **kwargs: original(transport=transport, **kwargs))
-    report = IncidentReporter(model_url="http://model.test").generate(fixture())
-    assert report["generation_mode"] == "fallback"
-    assert "generation_incomplete" in report["validation_issues"]
+    with pytest.raises(BackendUnavailable, match="generation_incomplete"):
+        IncidentReporter(model_url="http://model.test").generate(fixture())
 
 
 def test_busy_backend_preserves_retry_signal():
     class Busy:
-        def generate_incident(self, evidence):
+        def generate_contextual_incident(self, evidence):
             raise BackendUnavailable("model_busy")
     with pytest.raises(BackendUnavailable, match="model_busy"):
         IncidentReporter(backend=Busy()).generate(fixture())

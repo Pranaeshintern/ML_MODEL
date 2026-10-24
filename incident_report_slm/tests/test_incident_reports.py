@@ -1,3 +1,4 @@
+from model_fixtures import FixtureModel, draft
 from io import BytesIO
 import json
 from pathlib import Path
@@ -23,7 +24,7 @@ def example(n=1):return json.loads((ASSET_ROOT/f'examples/demo-{n:03}.json').rea
 
 
 class Offline:
-    def generate_incident(self,evidence):raise BackendUnavailable('model_unavailable')
+    def generate_contextual_incident(self,evidence):raise BackendUnavailable('model_unavailable')
 
 
 @pytest.mark.parametrize('number,colour,priority',[(1,'RED','Urgent SOS handling'),(2,'GREEN','Standard review'),(3,'GREY','Urgent SOS handling'),(4,'GREY','Verification needed')])
@@ -66,14 +67,13 @@ def test_green_context_does_not_override_sos_or_missing_observations():
 
 def test_no_actions_contacts_or_names_are_exposed_to_the_model():
     class Capture:
-        def generate_incident(self,evidence):
+        def generate_contextual_incident(self,evidence):
             serialized=json.dumps(evidence)
             assert 'Demo Guardian' not in serialized and 'Demo Officer' not in serialized
             assert '+91' not in serialized and 'DEMO-USER' not in serialized
             raise BackendUnavailable('model_unavailable')
-    report=IncidentReportService(Capture()).generate(IncidentBundle.model_validate(example()))
-    assert report['generation_mode']=='fallback'
-    assert report['input']['recorded_status']==example()['recorded_status']
+    with pytest.raises(BackendUnavailable, match='model_unavailable'):
+        IncidentReportService(Capture()).generate(IncidentBundle.model_validate(example()))
 
 
 def test_unsupported_numbers_and_invented_safety_are_rejected():
@@ -95,15 +95,12 @@ def test_timestamp_recombination_and_unsupported_interpretations_are_rejected(te
     assert issue in validate_narrative(draft,'description',data,view)
 
 
-def test_valid_model_sections_are_retained_and_rejected_sections_are_replaced():
-    class MixedBackend:
-        def generate_incident(self,evidence):
-            return json.dumps({'description':{'text':'An SOS was recorded after barking and a scream-like sound.','evidence_ids':['E01','E02','B']},
-                'interpretation':{'text':'The wearer is safe.','evidence_ids':['C','B']}})
-    report=IncidentReportService(MixedBackend()).generate(IncidentBundle.model_validate(example()))
-    assert report['generation_mode']=='mixed' and report['model_sections']==['description']
-    assert 'urgent SOS handling' in report['narrative']['interpretation']['text']
-    assert 'safe.' not in report['narrative']['interpretation']['text']
+def test_guarded_generation_rejects_unsafe_interpretation_without_substitution():
+    class BadModel:
+        def generate_contextual_incident(self, evidence):
+            return json.dumps(draft({'text':'The wearer is safe.', 'evidence_ids':['B']}))
+    with pytest.raises(BackendUnavailable, match='contextual_quality_rejected'):
+        IncidentReportService(BadModel()).generate(IncidentBundle.model_validate(example()))
 
 
 def test_no_sos_handling_or_missing_physiology_is_invented_for_exercise_case():
@@ -134,19 +131,14 @@ def test_last_known_location_is_not_erased_by_model_text(claim):
     assert 'unsupported_missing_location' in validate_narrative(draft,'description',data,view)
 
 
-def test_pdf_pack_matches_reference_sections_and_contains_four_reports():
-    reports=[IncidentReportService(Offline()).generate(IncidentBundle.model_validate(example(n))) for n in range(1,5)]
+def test_pdf_pack_preserves_supplied_fields_for_all_four_reference_cases():
+    reports=[IncidentReportService(FixtureModel(), mode='raw_review').generate(IncidentBundle.model_validate(example(n))) for n in range(1,5)]
     reader=PdfReader(BytesIO(render_incident_pdf(reports)))
-    assert len(reader.pages)==4
-    for n,page in enumerate(reader.pages,1):
-        text=page.extract_text()
-        for title in ('INCIDENT INFORMATION','WEARER / GUARDIAN / ALERT INFORMATION','INCIDENT DESCRIPTION','SENSOR FINDINGS','AUDIO TRANSCRIPT / SPEAKER INFORMATION','SLM INTERPRETATION','EVIDENCE / FOLLOW-UP'):
-            assert title in text
-        assert f'WLT-DEMO-{n:03}' in text and 'Officer Signature' in text
-    third=reader.pages[2].extract_text()
-    assert '8 min 10 sec' in third and 'Speakers Detected: Unavailable' in third
-    links=[a.get_object().get('/A',{}).get('/URI','') for a in reader.pages[0].get('/Annots',[])]
-    assert 'https://www.google.com/maps?q=12.97000,77.59000' in links
+    text=' '.join(p.extract_text() for p in reader.pages)
+    for title in ('INCIDENT INFORMATION','SENSOR FINDINGS','AUDIO TRANSCRIPT / SOURCE INFORMATION','SLM INTERPRETATION','EVIDENCE / FOLLOW-UP'):
+        assert title in text
+    for n in range(1,5): assert f'WLT-DEMO-{n:03}' in text
+    assert '8 min 10 sec' in text and 'Officer Signature' in text
 
 
 def test_source_database_is_read_only_and_id_lookup_is_parameterized(tmp_path,monkeypatch):
@@ -175,7 +167,7 @@ def client(tmp_path,monkeypatch):
     import wualt_slm.incident_api as api
     monkeypatch.delenv('WUALT_API_KEY',raising=False)
     monkeypatch.setattr(api,'store',IncidentStore(tmp_path/'reports.sqlite3'))
-    monkeypatch.setattr(api,'service',IncidentReportService(Offline()))
+    monkeypatch.setattr(api,'service',IncidentReportService(FixtureModel(),mode='raw_review'))
     with TestClient(api.app) as client:yield client
 
 
@@ -185,7 +177,7 @@ def test_active_application_generates_only_this_report_and_reuses_retries(client
         assert client.get(old).status_code==404
     first=client.post('/v1/incident-reports',json=example())
     assert first.status_code==200,first.text
-    report=first.json();assert report['generation_mode']=='fallback'
+    report=first.json();assert report['generation_mode']=='model_unvalidated'
     assert client.post('/v1/incident-reports',json=example()).json()['id']==report['id']
     changed=example();changed['physiology']['hr_peak_bpm']=129
     assert client.post('/v1/incident-reports',json=changed).status_code==409

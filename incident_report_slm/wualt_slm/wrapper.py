@@ -12,7 +12,7 @@ class IncidentReporter:
 
     Generation returns an unsaved draft. The REST API additionally persists the
     source snapshot and applies request-id idempotency. Inspect generation_mode
-    and validation_issues to distinguish model text from factual fallbacks.
+    and validation_issues to inspect the generated interpretation. Fallback is disabled; other sections contain supplied template fields.
     """
 
     def __init__(self, model_url: str | None = None, *, api_key: str | None = None, backend=None, mode: str | None = None):

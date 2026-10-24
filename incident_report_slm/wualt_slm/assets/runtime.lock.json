@@ -1,10 +1,13 @@
 {
-  "model_id": "Qwen/Qwen3-1.7B-GGUF",
-  "model_revision": "90862c4b9d2787eaed51d12237eafdfe7c5f6077",
-  "model_file": "Qwen3-1.7B-Q8_0.gguf",
-  "model_sha256": "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
-  "model_bytes": 1834426016,
+  "model_id": "Qwen/Qwen3-14B-GGUF",
+  "model_revision": "530227a7d994db8eca5ab5ced2fb692b614357fd",
+  "model_file": "Qwen3-14B-Q8_0.gguf",
+  "model_sha256": "a0dfe649137410b7d82f06a209240508e218f32f5b6fd81b69d6932160cfcd9d",
+  "model_bytes": 15698533728,
   "runtime_tag": "b11582",
   "runtime_url": "https://github.com/ggml-org/llama.cpp/releases/download/b11582/llama-b11582-bin-win-vulkan-x64.zip",
-  "runtime_sha256": "e08bf0deab30aea9c7925fefad51c78e90dc1cce945221839d3a5f6a18d6c37e"
+  "runtime_sha256": "e08bf0deab30aea9c7925fefad51c78e90dc1cce945221839d3a5f6a18d6c37e",
+  "base_model_id": "Qwen/Qwen3-14B",
+  "model_alias": "wualt-context-slm",
+  "enable_thinking": false
 }

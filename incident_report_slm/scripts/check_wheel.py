@@ -1,43 +1,43 @@
-"""Run with an installed wheel and python -I, from any directory."""
+"""Installed-wheel integration check; inference is explicitly simulated."""
 from io import BytesIO
 from contextlib import chdir
-import json
-import os
+import json, os
 from pathlib import Path
 import tempfile
 
-
 def main():
-    with tempfile.TemporaryDirectory(prefix="wualt-wheel-") as directory, chdir(directory):
-        os.environ["WUALT_DATA_DIR"] = directory
-        os.environ.pop("WUALT_API_KEY", None)
+    with tempfile.TemporaryDirectory(prefix='wualt-wheel-') as directory, chdir(directory):
+        os.environ['WUALT_DATA_DIR']=directory
+        os.environ.pop('WUALT_API_KEY',None)
         from fastapi.testclient import TestClient
         from pypdf import PdfReader
         from wualt_slm import IncidentReporter
-        from wualt_slm.backend import BackendUnavailable
         from wualt_slm.settings import ASSET_ROOT
-
-        class Offline:
-            def generate_incident(self, evidence):
-                raise BackendUnavailable("model_unavailable")
-
-        payload = json.loads((ASSET_ROOT / "examples/demo-001.json").read_text(encoding="utf-8"))
-        reporter = IncidentReporter(backend=Offline())
-        report = reporter.generate(payload)
-        assert report["view"]["colour"] == "RED"
-        assert len(PdfReader(BytesIO(reporter.pdf(report))).pages) == 1
+        class Simulated:
+            def generate_contextual_incident(self, evidence):
+                part={'text':'The transcript reports a request for help, but speaker identity and the situation remain unconfirmed. The recorded SOS requires urgent handling.', 'evidence_ids':['T01','B']}
+                return json.dumps({'interpretation':part,'interpretation_sentences':[dict(part,kind='interpretation')]})
+        payload=json.loads((ASSET_ROOT/'examples/demo-001.json').read_text(encoding='utf-8'))
+        payload['incident_description']='Supplied template description.'
+        reporter=IncidentReporter(backend=Simulated(),mode='raw_review')
+        report=reporter.generate(payload)
+        assert report['view']['colour']=='RED'
+        assert report['model_sections']==['interpretation'] and not report['fallback_enabled']
+        assert report['narrative']['description']['text']==payload['incident_description']
+        reader=PdfReader(BytesIO(reporter.pdf(report)))
+        assert len(reader.pages)>=2
+        assert 'SLM INTERPRETATION' in ' '.join(p.extract_text() for p in reader.pages)
         import wualt_slm.incident_api as api
-        api.service = reporter.service
+        api.service=reporter.service
         with TestClient(api.app) as client:
-            assert client.get("/").status_code == 200
-            assert client.get("/static/app.js").status_code == 200
-            assert len(client.get("/v1/incident-examples").json()["items"]) == 4
-            saved = client.post("/v1/incident-reports", json=payload)
-            assert saved.status_code == 200, saved.text
-            assert client.get(f"/v1/incident-reports/{saved.json()['id']}/pdf").content.startswith(b"%PDF")
-        assert (Path(directory) / "incident-reports.sqlite3").is_file()
-        print("Installed wheel passed: assets, Python wrapper, PDF, REST and external data directory.")
+            assert client.get('/').status_code==200
+            assert client.get('/static/app.js').status_code==200
+            assert len(client.get('/v1/incident-examples').json()['items'])==4
+            saved=client.post('/v1/incident-reports',json=payload)
+            assert saved.status_code==200,saved.text
+            assert client.post('/v1/incident-reports',json=payload).json()['id']==saved.json()['id']
+            assert client.get('/v1/incident-reports/'+saved.json()['id']+'/pdf').content.startswith(b'%PDF')
+        assert (Path(directory)/'incident-reports.sqlite3').is_file()
+        print('Installed wheel passed: supplied template fields, interpretation contract, assets, PDF, REST and retry reuse. Simulated inference only.')
 
-
-if __name__ == "__main__":
-    main()
+if __name__=='__main__': main()

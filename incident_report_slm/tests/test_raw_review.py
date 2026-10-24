@@ -1,3 +1,4 @@
+from model_fixtures import draft
 import json
 import pytest
 from pydantic import ValidationError
@@ -16,12 +17,13 @@ RAW={'description':{'text':'An SOS was recorded. The wearer is safe.','evidence_
 
 
 class Model:
-    def generate_incident(self,evidence):return json.dumps(RAW)
+    def generate_contextual_incident(self,evidence):return json.dumps(draft(RAW['interpretation']))
 
 
 def test_review_preserves_exact_model_text_and_flags_without_replacement():
     report=IncidentReportService(Model(),mode='raw_review').generate(fixture())
-    assert report['narrative']==RAW
+    assert report['narrative']['interpretation']==RAW['interpretation']
+    assert report['narrative']['description']['text']=='Not supplied.'
     assert report['generation_mode']=='model_unvalidated'
     assert report['fallback_enabled'] is False
     assert report['validation_issues']
@@ -31,15 +33,15 @@ def test_review_preserves_exact_model_text_and_flags_without_replacement():
 @pytest.mark.parametrize('raw',['null','[]','{}','not-json',json.dumps({'description':RAW['description']})])
 def test_bad_model_schema_is_failure_not_report(raw):
     class Broken:
-        def generate_incident(self,evidence):return raw
-    with pytest.raises(BackendUnavailable,match='invalid_narrative_schema'):
+        def generate_contextual_incident(self,evidence):return raw
+    with pytest.raises(BackendUnavailable,match='invalid_contextual_narrative_schema'):
         IncidentReportService(Broken(),mode='raw_review').generate(fixture())
 
 
 @pytest.mark.parametrize('reason',['model_busy','model_unavailable_or_invalid_response','generation_incomplete'])
 def test_model_failure_never_substitutes_fallback(reason):
     class Offline:
-        def generate_incident(self,evidence):raise BackendUnavailable(reason)
+        def generate_contextual_incident(self,evidence):raise BackendUnavailable(reason)
     with pytest.raises(BackendUnavailable,match=reason):
         IncidentReportService(Offline(),mode='raw_review').generate(fixture())
 
@@ -50,9 +52,8 @@ def test_source_schema_validation_still_applies():
 
 
 def test_default_guarded_mode_remains_available():
-    report=IncidentReportService(Model(),mode='guarded').generate(fixture())
-    assert report['narrative']['description']!=RAW['description']
-    assert report['fallback_enabled'] is True
+    with pytest.raises(BackendUnavailable, match='contextual_quality_rejected'):
+        IncidentReportService(Model(),mode='guarded').generate(fixture())
 
 
 def test_unknown_mode_is_rejected():
@@ -65,7 +66,7 @@ def test_raw_review_api_preserves_error_semantics(reason,status,tmp_path,monkeyp
     import wualt_slm.incident_api as api
     from wualt_slm.incident_store import IncidentStore
     class Failed:
-        def generate_incident(self,evidence):raise BackendUnavailable(reason)
+        def generate_contextual_incident(self,evidence):raise BackendUnavailable(reason)
     monkeypatch.delenv('WUALT_API_KEY',raising=False)
     monkeypatch.setattr(api,'service',IncidentReportService(Failed(),mode='raw_review'))
     monkeypatch.setattr(api,'store',IncidentStore(tmp_path/'raw.sqlite3'))
@@ -86,4 +87,4 @@ def test_raw_pdf_only_labels_synthetic_input_as_fictional(synthetic):
     report=IncidentReportService(Model(),mode='raw_review').generate(data)
     text=' '.join(p.extract_text() for p in PdfReader(BytesIO(render_incident_pdf(report))).pages)
     assert 'FALLBACK DISABLED' in text
-    assert ('fictional test report' in text)==synthetic
+    assert ('FICTIONAL SCENARIO' in text)==synthetic

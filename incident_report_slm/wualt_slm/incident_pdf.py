@@ -14,6 +14,9 @@ WIDTH=A4[0]-44
 
 
 def report_story(report,size):
+    if report.get('template_version') == 'interpretation-only-v1' or report['input'].get('schema_version') == 'incident-v2':
+        from .boxed_contextual_pdf import boxed_contextual_story
+        return boxed_contextual_story(report, WIDTH, size)
     data=report['input'];v=report['view'];n=report['narrative'];regular,bold=fonts()
     pdfmetrics.registerFontFamily(regular,normal=regular,bold=bold,italic=regular,boldItalic=bold)
     style=ParagraphStyle('Incident',fontName=regular,fontSize=size,leading=size+1.6,spaceAfter=0,splitLongWords=True,shaping=1)
@@ -75,6 +78,9 @@ def render_incident_pdf(reports):
     stream=BytesIO();regular,_=fonts();story=[]
     for index,report in enumerate(reports):
         if index:story.append(PageBreak())
+        if report.get('template_version') == 'interpretation-only-v1' or report['input'].get('schema_version') == 'incident-v2':
+            story.extend(report_story(report, 9))
+            continue
         for size in (8.8,8.5,8.2,8.0):
             parts=report_story(report,size)
             def height(item):
@@ -85,7 +91,8 @@ def render_incident_pdf(reports):
     sample=all(r['input']['synthetic'] for r in reports)
     def footer(canvas,doc):
         canvas.setFont(regular,6.5);canvas.setFillColor(colors.HexColor('#444444'))
-        label='WUALT | '+('RAW MODEL - UNVALIDATED' if any(r.get('report_mode')=='raw_review' for r in reports) else 'FICTIONAL SAMPLE' if sample else 'DRAFT FOR REVIEW')+' | Colour labels are illustrative, not validated scores.'
+        contextual=all(r.get('template_version') == 'interpretation-only-v1' or r['input'].get('schema_version')=='incident-v2' for r in reports)
+        label='WUALT | '+('RAW MODEL - UNVALIDATED' if any(r.get('report_mode')=='raw_review' for r in reports) else 'FICTIONAL SAMPLE' if sample else 'DRAFT FOR REVIEW')+(' | Generated narrative requires human review.' if contextual else ' | Colour labels are illustrative, not validated scores.')
         canvas.drawCentredString(A4[0]/2,18,label);canvas.drawRightString(A4[0]-22,8,str(doc.page))
     doc=SimpleDocTemplate(stream,pagesize=A4,leftMargin=16,rightMargin=16,topMargin=16,bottomMargin=34,title='WUALT Incident Report',author='WUALT')
     doc.build(story,onFirstPage=footer,onLaterPages=footer)
