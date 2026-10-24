@@ -15,7 +15,7 @@ class SourceNotFound(Exception):pass
 
 
 def demo_cases():
-    return [IncidentBundle.model_validate_json(p.read_text(encoding='utf-8')) for p in sorted((ASSET_ROOT/'examples').glob('*.json'))]
+    return [IncidentBundle.model_validate_json(p.read_text(encoding='utf-8')) for p in sorted((ASSET_ROOT/'examples').glob('demo-*.json'))]
 
 
 def seed_demo_database():

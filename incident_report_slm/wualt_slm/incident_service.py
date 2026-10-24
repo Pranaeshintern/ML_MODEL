@@ -56,31 +56,5 @@ class IncidentReportService:
             raise ValueError('WUALT_REPORT_MODE must be guarded or raw_review')
 
     def generate(self,data):
-        view=build_incident_view(data)
-        narratives={'description':{'text':view['fallback_description'],'evidence_ids':[e['id'] for e in view['evidence'] if e['id'].startswith('E')] or ['B','M','P','A']},
-                    'interpretation':{'text':view['fallback_interpretation'],'evidence_ids':['C','L','B','P','M','A','G']}}
-        issues=[];accepted=[];interpretation_attempts=0;interpretation_selected_attempt=0
-        try:
-            draft=IncidentDraft.model_validate_json(self.backend.generate_incident(view['evidence']))
-            interpretation_attempts=draft.interpretation_attempts
-            interpretation_selected_attempt=draft.interpretation_selected_attempt
-            for name in ('description','interpretation'):
-                part=getattr(draft,name);errors=validate_narrative(part,name,data,view)
-                if name=='interpretation':errors.extend(draft.interpretation_quality_issues)
-                if errors:issues.extend(f'{name}:{error}' for error in errors)
-                if not errors or self.mode=='raw_review':
-                    narratives[name]=part.model_dump();accepted.append(name)
-        except BackendUnavailable as exc:
-            if str(exc)=='model_busy' or self.mode=='raw_review':raise
-            issues.append(str(exc))
-        except ValidationError:
-            if self.mode=='raw_review':raise BackendUnavailable('invalid_narrative_schema')
-            issues.append('invalid_narrative_schema')
-        mode='model' if len(accepted)==2 else 'mixed' if accepted else 'fallback'
-        if self.mode=='raw_review':mode='model_unvalidated'
-        return {'id':str(uuid4()),'status':'unvalidated_draft' if self.mode=='raw_review' else 'draft','input':data.model_dump(mode='json'),'view':view,'narrative':narratives,
-                'fallback_enabled':self.mode!='raw_review','report_mode':self.mode,
-                'interpretation_attempts':interpretation_attempts,'interpretation_selected_attempt':interpretation_selected_attempt,
-                'generation_mode':mode,'model_sections':accepted,'validation_issues':issues,'prompt_version':PROMPT_VERSION,
-                'model_id':RUNTIME_LOCK['model_id'],'model_revision':RUNTIME_LOCK['model_revision'],
-                'generated_at':datetime.now(timezone.utc).isoformat()}
+        from .contextual_report import generate_contextual_report
+        return generate_contextual_report(data, self.backend, self.mode)
