@@ -172,7 +172,7 @@ def client(tmp_path,monkeypatch):
 
 
 def test_active_application_generates_only_this_report_and_reuses_retries(client):
-    assert 'Incident reports' in client.get('/').text
+    assert 'Interpret the situation.' in client.get('/').text
     for old in ['/studio','/v1/reports','/v1/app/sample-week','/v1/app/cards']:
         assert client.get(old).status_code==404
     first=client.post('/v1/incident-reports',json=example())

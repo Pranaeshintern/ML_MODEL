@@ -217,7 +217,7 @@ def test_v2_api_persists_exact_snapshot_and_reuses_retry(tmp_path,monkeypatch):
         assert client.get('/v1/incident-reports/'+report['id']+'/pdf').status_code==200
         example=client.get('/v1/incident-input-example').json()
         assert example['schema_version']=='incident-v2'
-        assert 'Incident input JSON' in client.get('/').text
+        assert 'Backend input JSON' in client.get('/').text
 
 
 def test_analysis_retry_is_bounded_and_preserves_best_candidate(monkeypatch):

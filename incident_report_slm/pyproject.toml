@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wualt-incident-slm"
-version = "0.11.0"
-description = "Pretrained SLM wrapper for the WUALT colour-coded incident report"
+version = "0.12.0"
+description = "Pretrained SLM wrapper for interpretation of backend distress signals"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

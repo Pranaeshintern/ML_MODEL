@@ -40,6 +40,10 @@ class LlamaBackend:
         except (httpx.HTTPError, ValueError):
             return False
 
+    def generate_interpretation(self, evidence):
+        from .signal_interpretation import generate_signal_interpretation
+        return generate_signal_interpretation(self, evidence)
+
     def generate_contextual_incident(self, evidence):
         from .contextual_backend import generate_contextual
         return generate_contextual(self, evidence)

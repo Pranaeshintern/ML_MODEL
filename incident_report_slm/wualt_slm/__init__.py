@@ -2,5 +2,8 @@
 from .incident_schema import IncidentBundle
 from .wrapper import IncidentReporter
 
-__version__ = "0.9.0"
-__all__ = ["IncidentBundle", "IncidentReporter"]
+__version__ = "0.12.0"
+from .signal_schema import InterpretationInput, InterpretationResponse
+from .signal_interpretation import SignalInterpreter
+
+__all__ = ["SignalInterpreter", "InterpretationInput", "InterpretationResponse", "IncidentBundle", "IncidentReporter"]

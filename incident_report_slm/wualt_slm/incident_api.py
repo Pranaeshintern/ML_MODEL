@@ -8,6 +8,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse,JSONResponse,Response
 from fastapi.staticfiles import StaticFiles
 from .backend import LlamaBackend,BackendUnavailable
+from .signal_schema import InterpretationInput, InterpretationResponse
+from .signal_interpretation import SignalInterpreter
 from .incident_schema import IncidentBundle
 from .incident_service import IncidentReportService
 from .incident_store import IncidentStore
@@ -18,7 +20,7 @@ from .schemas import SourceId,StrictModel
 from .settings import ASSET_ROOT,DATA_ROOT,allowed_origins
 
 backend=LlamaBackend();service=IncidentReportService(backend);store=IncidentStore(DATA_ROOT/'incident-reports.sqlite3');generation_lock=Lock()
-app=FastAPI(title='WUALT Incident Reports',version='0.11.0',description='Generate incident-v1 reference reports and incident-v2 contextual reports from physiology, transcript, keywords and optional activity/chat.')
+app=FastAPI(title='WUALT Signal Interpretation',version='0.12.0',description='Compact backend signals in; one interpretation out. Legacy report endpoints remain available for compatibility.')
 
 
 def authenticate(x_api_key:str|None=Header(default=None)):
@@ -62,7 +64,7 @@ async def missing(request,exc):return JSONResponse({'detail':'Report not found.'
 
 
 @app.get('/health')
-def health():return {'api':'ready','model_ready':backend.ready(),'prototype':True,'service':'wualt-incident-slm','workflow':'incident-report-only','version':'0.11.0','schemas':['incident-v1','incident-v2'],'report_mode':service.mode,'auth_required':bool(os.getenv('WUALT_API_KEY')),'database_configured':bool(os.getenv('WUALT_SOURCE_DB')),'server_configured':bool(os.getenv('WUALT_SOURCE_API_BASE'))}
+def health():return {'api':'ready','model_ready':backend.ready(),'prototype':True,'service':'wualt-incident-slm','workflow':'interpretation-only','version':'0.12.0','schemas':['interpretation-v1','incident-v1','incident-v2'],'report_mode':service.mode,'auth_required':bool(os.getenv('WUALT_API_KEY')),'database_configured':bool(os.getenv('WUALT_SOURCE_DB')),'server_configured':bool(os.getenv('WUALT_SOURCE_API_BASE'))}
 
 
 @router.get('/incident-examples')
@@ -122,9 +124,29 @@ def pdf(report_id:UUID,download:bool=False):
     return Response(content,media_type='application/pdf',headers={'Content-Disposition':('attachment' if download else 'inline')+f'; filename="wualt-incident-{report_id}.pdf"'})
 
 
+@router.get('/interpretation-input-example')
+def interpretation_example():
+    return InterpretationInput.model_validate_json((ASSET_ROOT/'examples/interpretation-v1.json').read_text(encoding='utf-8')).model_dump(mode='json', exclude_none=True)
+
+
+@router.post('/interpretations', response_model=InterpretationResponse)
+def interpret_signals(data: InterpretationInput):
+    if not generation_lock.acquire(blocking=False):
+        raise HTTPException(503, 'The model is busy. Retry later.', headers={'Retry-After':'3'})
+    try:
+        try:
+            return SignalInterpreter(backend=backend).interpret(data)
+        except BackendUnavailable as exc:
+            if str(exc) == 'model_busy':
+                raise HTTPException(503, 'The model is busy. Retry later.', headers={'Retry-After':'3'})
+            raise HTTPException(502, 'Model generation failed; no fallback was substituted.')
+    finally:
+        generation_lock.release()
+
+
 app.include_router(router)
 app.mount('/static',StaticFiles(directory=ASSET_ROOT/'web'),name='static')
 
 
 @app.get('/',include_in_schema=False)
-def home():return FileResponse(ASSET_ROOT/'web/index.html')
+def home():return FileResponse(ASSET_ROOT/'web/interpretation.html')

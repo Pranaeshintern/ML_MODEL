@@ -16,6 +16,9 @@ def main(argv=None):
     generate.add_argument("--output", type=Path, required=True)
     generate.add_argument("--pdf", type=Path)
     generate.add_argument("--require-model", action="store_true", help="Fail when the model service is unavailable")
+    interpret = commands.add_parser("interpret", help="Return only an interpretation from compact backend signals")
+    interpret.add_argument("input", type=Path)
+    interpret.add_argument("--output", type=Path)
     setup = commands.add_parser("setup-model", help="Download pinned model assets with checksum verification")
     setup.add_argument("--directory", type=Path, default=Path.cwd())
     setup.add_argument("--model-only", action="store_true")
@@ -34,6 +37,15 @@ def main(argv=None):
     elif args.command == "setup-model":
         from .setup_model import main as setup_main
         setup_main(["--directory", str(args.directory)] + (["--model-only"] if args.model_only else []))
+    elif args.command == "interpret":
+        from .signal_interpretation import SignalInterpreter
+        result = SignalInterpreter().interpret(json.loads(args.input.read_text(encoding="utf-8")))
+        encoded = json.dumps(result, indent=2, ensure_ascii=False)
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(encoded, encoding="utf-8")
+        else:
+            print(encoded)
     else:
         from .wrapper import IncidentReporter
         reporter = IncidentReporter()
