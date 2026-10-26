@@ -1,4 +1,4 @@
-"""Compact backend signals in; a single interpretation out."""
+"""Compact backend signals in; separate audio and distress interpretations out."""
 from typing import Annotated, Literal
 from pydantic import AwareDatetime, Field, StringConstraints, model_validator
 from .schemas import RequestBase, SourceId, StrictModel
@@ -97,4 +97,5 @@ class SignalDraft(StrictModel):
     sentences: list[SignalSentence] = Field(min_length=1, max_length=5)
 
 class InterpretationResponse(StrictModel):
-    interpretation: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1800)]
+    audio_interpretation: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1800)]
+    distress_interpretation: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1800)]

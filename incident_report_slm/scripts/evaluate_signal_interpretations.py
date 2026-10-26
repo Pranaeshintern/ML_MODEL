@@ -52,9 +52,13 @@ def cases():
 def save_html(rows, target):
     cards=[]
     for row in rows:
-        output=row.get("output",{}).get("interpretation",row.get("error","No output"))
-        cards.append("<article><h2>"+html.escape(row["scenario"])+"</h2><p class='state'>Supplied state: "+html.escape(row["input"]["state"]["label"])+"</p><p class='interpretation'>"+html.escape(output)+"</p><details><summary>Input and manual review focus</summary><p>"+html.escape(row["review_focus"])+"</p><pre>"+html.escape(json.dumps(row["input"],indent=2,ensure_ascii=False))+"</pre></details></article>")
-    target.write_text("<!doctype html><html lang='en'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>WUALT interpretation review</title><style>body{font:16px/1.65 system-ui;background:#f3f6f4;color:#15382d;margin:0}main{max-width:960px;margin:40px auto;padding:0 24px}article{background:white;border:1px solid #d2e0d9;border-radius:12px;padding:24px;margin:20px 0;break-inside:avoid}h1{font-size:32px}h2{font-size:20px;margin:0}.state{color:#5c766b;font-size:13px}.interpretation{font-size:18px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}summary{cursor:pointer;color:#1b6d52}header p{color:#587366}</style><main><header><h1>WUALT interpretations</h1><p>Fictional scenarios · Live Qwen3-14B output · Fallback disabled · Manual review required</p></header>"+"".join(cards)+"</main></html>",encoding="utf-8")
+        if "output" in row:
+            result=row["output"]
+            output="<h3>Audio interpretation</h3><p class='interpretation'>"+html.escape(result["audio_interpretation"])+"</p><h3>Distress explanation</h3><p class='interpretation'>"+html.escape(result["distress_interpretation"])+"</p>"
+        else:
+            output="<p class='error'>Neither interpretation was returned: "+html.escape(row.get("error","No output"))+"</p>"
+        cards.append("<article><h2>"+html.escape(row["scenario"])+"</h2><p class='state'>Supplied state: "+html.escape(row["input"]["state"]["label"])+"</p>"+output+"<details><summary>Input and manual review focus</summary><p>"+html.escape(row["review_focus"])+"</p><pre>"+html.escape(json.dumps(row["input"],indent=2,ensure_ascii=False))+"</pre></details></article>")
+    target.write_text("<!doctype html><html lang='en'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>WUALT interpretation review</title><style>body{font:16px/1.65 system-ui;background:#f3f6f4;color:#15382d;margin:0}main{max-width:960px;margin:40px auto;padding:0 24px}article{background:white;border:1px solid #d2e0d9;border-radius:12px;padding:24px;margin:20px 0;break-inside:avoid}h1{font-size:32px}h2{font-size:20px;margin:0}.state{color:#5c766b;font-size:13px}.interpretation{font-size:18px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}summary{cursor:pointer;color:#1b6d52}header p{color:#587366}</style><main><header><h1>WUALT interpretations</h1><p>Fictional scenarios · Separate audio and distress interpretations · Live Qwen3-14B output · Fallback disabled · Manual review required</p></header>"+"".join(cards)+"</main></html>",encoding="utf-8")
 
 def main():
     p=argparse.ArgumentParser();p.add_argument("--model-url",default="http://127.0.0.1:8081");p.add_argument("--output",type=Path,required=True)

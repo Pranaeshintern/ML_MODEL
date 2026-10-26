@@ -16,7 +16,7 @@ def main(argv=None):
     generate.add_argument("--output", type=Path, required=True)
     generate.add_argument("--pdf", type=Path)
     generate.add_argument("--require-model", action="store_true", help="Fail when the model service is unavailable")
-    interpret = commands.add_parser("interpret", help="Return only an interpretation from compact backend signals")
+    interpret = commands.add_parser("interpret", help="Return separate audio and distress interpretations from backend signals")
     interpret.add_argument("input", type=Path)
     interpret.add_argument("--output", type=Path)
     setup = commands.add_parser("setup-model", help="Download pinned model assets with checksum verification")

@@ -1,10 +1,15 @@
-# WUALT signal interpretation wrapper 0.12.0
+# WUALT signal interpretation wrapper 0.13.0
 
-The backend sends a compact JSON snapshot. The model explains what the supplied signals suggest and returns **one interpretation paragraph**. Report forms, officer/wearer details, report numbers, PDF rendering and button-trigger logic are not part of this path.
+The backend sends a compact JSON snapshot. The model explains what the supplied signals suggest and returns **two separate interpretation paragraphs**. Report forms, officer/wearer details, report numbers, PDF rendering and button-trigger logic are not part of this path.
 
 ## Architecture
 
-Backend signals → validate JSON and timing → preserve source meaning and measurement context → pretrained SLM → check output structure/citations → interpretation.
+Backend signals → validate JSON and timing → two isolated model calls → check each paragraph → return both interpretations.
+
+1. **Audio interpretation:** receives only transcript, tone and sound-event labels, with their reliability/confidence and speaker-attribution metadata. No supplied state, keywords, HR/HRV, activity, chat, location or snapshot/window timing is sent to this call. It explains what the audio observations suggest.
+2. **Distress explanation:** receives the validated backend evidence. It explains which observations support or conflict with the supplied state, and what remains uncertain. Keywords are derived hints, not independent corroboration. HR/HRV provide supporting context only. It does not claim to know the upstream classifier's internal reasoning or establish an unobserved cause.
+
+The calls are independent: the distress call uses original evidence, not the generated audio paragraph. Both must pass before a response is returned.
 
 The wrapper consumes already-produced transcript, tone labels, sound-event labels and a normal/stress/distress classification. It does not transcribe audio, detect sounds or train a classifier. The supplied state is context to assess, not ground truth to repeat. HR and HRV support the explanation; values alone do not establish distress, cause or a diagnosis.
 
@@ -35,17 +40,20 @@ Only `time` (an ISO timestamp with timezone) and `state.label` are required. Sen
 
 HR comparison requires usable quality and an explicitly comparable reference. HRV comparison additionally requires matching metric and duration, usable quality, artifact correction and overlap with the observation window. Invalid timestamps, reversed windows, invalid ranges, blank text and unknown fields fail before inference. Bounds are transport checks, not clinical thresholds.
 
-The prompt relates the transcript, tone and sound events to the supplied state. It preserves disagreements: a normal label must not erase a help request. A detected gunshot is not proof of a shooting; barking does not establish a dog attack. Location fix age/accuracy and time provide context, not a danger score. Raw coordinates and exact numeric measurements/timestamps are validated and reduced to comparison/timing descriptions before inference; the caller retains the original values. Only last-known or pre-window location fixes are included as interpretation limitations. Recent coordinates remain with the caller. This reduces confusion between units, locations and elapsed time in the paragraph. Input text is treated as untrusted data. Instruction-like labels and zero-confidence tone/sound labels are excluded from usable evidence; this is a heuristic, not a guarantee against all prompt injections.
+The distress prompt relates the transcript, tone and sound events to the supplied state; the audio prompt never receives that state. It preserves disagreements: a normal label must not erase a help request. A detected gunshot is not proof of a shooting; barking does not establish a dog attack. Location fix age/accuracy and time provide context, not a danger score. Raw coordinates and exact numeric measurements/timestamps are validated and reduced to comparison/timing descriptions before inference; the caller retains the original values. Only last-known or pre-window location fixes are included as interpretation limitations. Recent coordinates remain with the caller. This reduces confusion between units, locations and elapsed time in the paragraph. Input text is treated as untrusted data. Instruction-like labels and zero-confidence tone/sound labels are excluded from usable evidence; this is a heuristic, not a guarantee against all prompt injections.
 
 ## Output
 
 ```json
-{"interpretation": "One paragraph explaining the supplied situation and relevant uncertainty."}
+{
+  "audio_interpretation": "A paragraph interpreting only transcript, tone and sound events.",
+  "distress_interpretation": "A paragraph explaining evidence for or against the supplied state and relevant uncertainty."
+}
 ```
 
-Only the interpretation is returned. There are no report sections or echoed input fields. Internal sentence citations help detect invalid source references, wrong supplied-state names and invented numbers; they are not exposed in the response.
+Only these two interpretation fields are returned. There are no report sections or echoed input fields. Internal sentence citations help detect invalid source references, wrong supplied-state names and invented numbers; they are not exposed in the response.
 
-One bounded revision is allowed for a failed grounding check. Truncated, invalid or still-flagged output fails. **Fallback is disabled.** These checks do not certify semantic accuracy; human review remains necessary.
+Each model call allows one bounded revision for a failed grounding check. Truncated, invalid or still-flagged output in either call fails the entire request; a partial pair is never presented as success. Two model calls are required, so the old single-call latency does not apply. **Fallback is disabled.** These checks do not certify semantic accuracy; human review remains necessary.
 
 ## Run
 
@@ -83,10 +91,13 @@ Python:
 ```python
 from wualt_slm import SignalInterpreter
 result = SignalInterpreter("http://127.0.0.1:8081").interpret(payload)
-print(result["interpretation"])
+print(result["audio_interpretation"])
+print(result["distress_interpretation"])
 ```
 
 ## Compatibility and verification
+
+**v0.13 response change:** `/v1/interpretations`, `SignalInterpreter.interpret()` and the `interpret` CLI now return the two keys above instead of the v0.12 `interpretation` key. The `interpretation-v1` input JSON is unchanged. Update callers to read both keys.
 
 The earlier `IncidentReporter`, `generate` command and `/v1/incident-reports` endpoints remain for explicit legacy callers. They are not used by the new interpretation endpoint or home page. Existing report requests retain their old schema; they are not silently converted into the compact contract.
 

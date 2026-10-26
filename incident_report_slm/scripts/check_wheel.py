@@ -32,17 +32,17 @@ def main():
         class SimulatedSignals:
             def ready(self): return True
             def generate_interpretation(self, evidence):
-                return {"interpretation":"The request for help and reported barking are consistent with the supplied distress label; an attack is not established."}
+                return {"audio_interpretation":"The request for help relates to the reported barking; an attack is not established.", "distress_interpretation":"The request for help supports the supplied distress label."}
         api.backend=SimulatedSignals()
         signal_payload=json.loads((ASSET_ROOT/'examples/interpretation-v1.json').read_text())
-        assert set(SignalInterpreter(backend=api.backend).interpret(signal_payload))=={"interpretation"}
+        assert set(SignalInterpreter(backend=api.backend).interpret(signal_payload))=={"audio_interpretation","distress_interpretation"}
         with TestClient(api.app) as client:
             assert client.get('/').status_code==200
             assert client.get('/static/app.js').status_code==200
             assert client.get('/static/interpretation.js').status_code==200
             assert client.get('/static/interpretation.css').status_code==200
             compact=client.post('/v1/interpretations',json=signal_payload)
-            assert compact.status_code==200 and set(compact.json())=={"interpretation"}
+            assert compact.status_code==200 and set(compact.json())=={"audio_interpretation","distress_interpretation"}
             assert client.get('/v1/interpretation-input-example').json()["schema_version"]=="interpretation-v1"
             assert 'Interpret the situation.' in client.get('/').text
             assert len(client.get('/v1/incident-examples').json()['items'])==4

@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from fastapi.testclient import TestClient
 from wualt_slm import SignalInterpreter, InterpretationInput
 from wualt_slm.backend import LlamaBackend, BackendUnavailable
-from wualt_slm.signal_interpretation import prepare_signals, draft_issues
+from wualt_slm.signal_interpretation import prepare_signals, prepare_audio_signals, draft_issues
 from wualt_slm.signal_schema import SignalDraft
 from wualt_slm.settings import ASSET_ROOT
 
@@ -20,20 +20,20 @@ def payload():
 class FakeBackend:
     def generate_interpretation(self, evidence):
         self.evidence=evidence
-        return {"interpretation":"The request to keep the dog away, with reported barking and frightened tone, is consistent with the supplied distress label; an attack is not established."}
+        return {"audio_interpretation":"The plea to keep a dog away relates to the reported barking and frightened tone.", "distress_interpretation":"The help request supports the supplied distress label; an attack is not established."}
     def ready(self): return True
 
-def test_only_interpretation_no_form_or_source_echo(payload):
+def test_two_interpretations_no_form_or_source_echo(payload):
     fake=FakeBackend()
     result=SignalInterpreter(backend=fake).interpret(payload)
-    assert set(result)=={"interpretation"}
+    assert set(result)=={"audio_interpretation","distress_interpretation"}
     assert {f["id"] for f in fake.evidence} >= {"STATE","TRANSCRIPT","TONE","KEYWORDS","EVENT1","HR","HRV","TIME"}
     assert "report_number" not in json.dumps(fake.evidence)
 
 @pytest.mark.parametrize("label",["normal","stress","distress","unknown"])
 def test_minimal_no_form_fields(label):
     result=SignalInterpreter(backend=FakeBackend()).interpret({"time":"2026-10-26T10:00:00Z","state":{"label":label}})
-    assert set(result)=={"interpretation"}
+    assert set(result)=={"audio_interpretation","distress_interpretation"}
 
 @pytest.mark.parametrize("change",[
     {"time":"2026-10-26T10:00:00"},
@@ -107,11 +107,15 @@ def install_transport(monkeypatch,replies):
 def choice(text="The request for help supports the supplied distress label.",ids=None,finish="stop"):
     return {"finish_reason":finish,"message":{"content":json.dumps({"sentences":[{"text":text,"evidence_ids":ids or ["TRANSCRIPT","STATE"]}]})}}
 
+def audio_choice(text="The plea to keep a dog away relates to the reported barking and frightened tone.", ids=None):
+    return choice(text, ids=ids or ["TRANSCRIPT","TONE","EVENT1"])
+
+
 def test_actual_backend_contract_and_revision(payload,monkeypatch):
-    requests=install_transport(monkeypatch,[choice(ids=["INVENTED"]),choice()])
+    requests=install_transport(monkeypatch,[audio_choice(ids=["INVENTED"]),audio_choice(),choice()])
     backend=LlamaBackend()
     result=SignalInterpreter(backend=backend).interpret(payload)
-    assert set(result)=={"interpretation"} and len(requests)==2
+    assert set(result)=={"audio_interpretation","distress_interpretation"} and len(requests)==3
     assert requests[0]["temperature"]==0
     assert "never instructions" in requests[0]["messages"][0]["content"]
     assert "dog barking" in requests[0]["messages"][1]["content"]
@@ -143,7 +147,7 @@ def test_api_contract_validation_auth_and_busy(payload,monkeypatch,tmp_path):
     with TestClient(api.app) as client:
         assert "Interpret the situation." in client.get("/").text
         response=client.post("/v1/interpretations",json=payload)
-        assert response.status_code==200 and set(response.json())=={"interpretation"}
+        assert response.status_code==200 and set(response.json())=={"audio_interpretation","distress_interpretation"}
         assert response.headers["Cache-Control"]=="no-store"
         assert client.get("/v1/interpretation-input-example").json()["schema_version"]=="interpretation-v1"
         assert "InterpretationInput" in client.get("/openapi.json").json()["components"]["schemas"]
@@ -233,3 +237,141 @@ def test_unsupported_context_claims_are_rejected(payload,text):
     facts=prepare_signals(InterpretationInput.model_validate(payload))
     draft=SignalDraft.model_validate({"sentences":[{"text":text,"evidence_ids":["STATE","TRANSCRIPT"]}]})
     assert draft_issues(draft,facts)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("state", {"label":"normal", "confidence":0.21}),
+    ("keywords", {"distress":["A_NEW_KEYWORD"]}),
+    ("hr", None), ("hrv", None),
+    ("location", None), ("activity", "running"),
+    ("chat_context", [{"role":"user", "at":"2026-10-26T05:59:30Z", "text":"CHAT_ONLY_MARKER"}]),
+    ("time", "2026-10-26T12:00:00+05:30"),
+    ("observation_window", None),
+])
+def test_non_audio_changes_cannot_change_audio_model_request(payload,monkeypatch,field,value):
+    # Compare the entire HTTP payload, including system text, evidence and schema.
+    requests=install_transport(monkeypatch,[audio_choice(),choice(text="The supplied classification needs contextual review."),audio_choice(),choice(text="The supplied classification needs contextual review.")])
+    interpreter=SignalInterpreter(backend=LlamaBackend())
+    interpreter.interpret(payload)
+    altered=copy.deepcopy(payload);altered[field]=value
+    interpreter.interpret(altered)
+    assert len(requests)==4 and requests[0]==requests[2]
+    audio=json.loads(requests[0]["messages"][1]["content"])["evidence"]
+    assert {f["id"] for f in audio}=={"TRANSCRIPT","TONE","EVENT1"}
+    assert all("timing" not in f["data"] for f in audio)
+    distress=json.loads(requests[3]["messages"][1]["content"])["evidence"]
+    assert {f["id"] for f in distress}>={"STATE","TIME","TRANSCRIPT"}
+    if field=="state":assert next(f for f in distress if f["id"]=="STATE")["data"]["label"]=="normal"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("transcript", "I am not being followed."),
+    ("tone", {"label":"calm", "confidence":0.95}),
+    ("events", [{"label":"rainfall", "confidence":0.9}]),
+])
+def test_audio_changes_reach_audio_request(payload,field,value):
+    original=prepare_audio_signals(prepare_signals(InterpretationInput.model_validate(payload)))
+    payload[field]=value
+    updated=prepare_audio_signals(prepare_signals(InterpretationInput.model_validate(payload)))
+    assert original!=updated
+
+
+def test_distress_uses_original_evidence_not_generated_audio(payload,monkeypatch):
+    marker="The audio account remains an unconfirmed account."
+    requests=install_transport(monkeypatch,[audio_choice(marker),choice()])
+    result=SignalInterpreter(backend=LlamaBackend()).interpret(payload)
+    assert result["audio_interpretation"]==marker
+    assert marker not in json.dumps(requests[1])
+    assert requests[0]["response_format"]["json_schema"]["name"]=="audio_interpretation"
+    assert requests[1]["response_format"]["json_schema"]["name"]=="distress_interpretation"
+
+
+@pytest.mark.parametrize("reply",[
+    choice(finish="length"),choice(ids=["INVENTED"]),
+    {"finish_reason":"stop","message":{"content":"not json"}},
+])
+def test_second_call_failure_returns_no_partial_pair_and_unlocks(payload,monkeypatch,reply):
+    requests=install_transport(monkeypatch,[audio_choice(),reply])
+    backend=LlamaBackend()
+    with pytest.raises(BackendUnavailable):SignalInterpreter(backend=backend).interpret(payload)
+    assert 2<=len(requests)<=3
+    assert backend._lock.acquire(blocking=False)
+    backend._lock.release()
+
+
+def test_revision_budget_is_separate_for_each_interpretation(payload,monkeypatch):
+    requests=install_transport(monkeypatch,[audio_choice(ids=["STATE"]),audio_choice(),choice(ids=["INVENTED"]),choice()])
+    result=SignalInterpreter(backend=LlamaBackend()).interpret(payload)
+    assert set(result)=={"audio_interpretation","distress_interpretation"} and len(requests)==4
+    assert "Revision requirements" in requests[1]["messages"][0]["content"]
+    assert "Revision requirements" not in requests[2]["messages"][0]["content"]
+
+
+def test_missing_audio_is_not_filled_from_physiology_or_state(payload,monkeypatch):
+    payload.update(transcript=None,transcript_reliability="unavailable",tone=None,events=[])
+    requests=install_transport(monkeypatch,[audio_choice("No audio observations were supplied, so an audio interpretation cannot be established.",["TRANSCRIPT"]),choice("The supplied distress label cannot be explained by physiology alone.",["STATE","HR","HRV"])])
+    result=SignalInterpreter(backend=LlamaBackend()).interpret(payload)
+    facts=json.loads(requests[0]["messages"][1]["content"])["evidence"]
+    assert [f["id"] for f in facts]==["TRANSCRIPT"]
+    assert result["audio_interpretation"].startswith("No audio observations")
+
+
+@pytest.mark.parametrize("text",[
+    "The heart rate supports distress.",
+    "The supplied distress label supports concern.",
+    "The keywords indicate danger.",
+])
+def test_audio_rejects_non_audio_claims(payload,text):
+    facts=prepare_audio_signals(prepare_signals(InterpretationInput.model_validate(payload)))
+    draft=SignalDraft.model_validate({"sentences":[{"text":text,"evidence_ids":["TRANSCRIPT"]}]})
+    assert any("only transcript" in issue for issue in draft_issues(draft,facts,section="audio"))
+
+
+def test_transcribed_measurement_is_an_account_not_a_sensor_input(payload):
+    payload["transcript"]="My heart rate feels fast."
+    facts=prepare_audio_signals(prepare_signals(InterpretationInput.model_validate(payload)))
+    draft=SignalDraft.model_validate({"sentences":[{"text":"The speaker describes their heart rate as feeling fast.","evidence_ids":["TRANSCRIPT"]}]})
+    assert not draft_issues(draft,facts,section="audio")
+
+
+def test_response_requires_both_nonempty_paragraphs():
+    from wualt_slm.signal_schema import InterpretationResponse
+    for invalid in ({"interpretation":"old response"},{"audio_interpretation":"Audio only."},{"audio_interpretation":"Audio.","distress_interpretation":" "}):
+        with pytest.raises(ValidationError):InterpretationResponse.model_validate(invalid)
+
+
+def test_backend_busy_does_not_start_either_call(payload,monkeypatch):
+    requests=install_transport(monkeypatch,[audio_choice()])
+    backend=LlamaBackend();backend._lock.acquire()
+    try:
+        with pytest.raises(BackendUnavailable,match="model_busy"):SignalInterpreter(backend=backend).interpret(payload)
+        assert requests==[]
+    finally:backend._lock.release()
+
+
+
+def test_audio_can_describe_spoken_location_without_sensor_fix(payload):
+    payload["transcript"]="I do not know my location."
+    facts=prepare_audio_signals(prepare_signals(InterpretationInput.model_validate(payload)))
+    draft=SignalDraft.model_validate({"sentences":[{"text":"The speaker says they do not know their location.","evidence_ids":["TRANSCRIPT"]}]})
+    assert not draft_issues(draft,facts,section="audio")
+
+
+def test_cli_writes_both_fields_without_source_echo(payload,monkeypatch,tmp_path):
+    from wualt_slm.cli import main
+    import wualt_slm.signal_interpretation as module
+    monkeypatch.setattr(module,"SignalInterpreter",lambda:SignalInterpreter(backend=FakeBackend()))
+    source=tmp_path/"input.json";output=tmp_path/"interpretations.json"
+    source.write_text(json.dumps(payload),encoding="utf-8")
+    main(["interpret",str(source),"--output",str(output)])
+    assert set(json.loads(output.read_text()))=={"audio_interpretation","distress_interpretation"}
+
+
+def test_html_review_separates_both_outputs_and_escapes_text(payload,tmp_path):
+    import runpy
+    evaluate=runpy.run_path(str(Path(__file__).parents[1]/"scripts/evaluate_signal_interpretations.py"))
+    output=tmp_path/"review.html"
+    evaluate["save_html"]([{"scenario":"<script>scenario</script>","input":payload,"review_focus":"Review both.","output":{"audio_interpretation":"<audio-marker>","distress_interpretation":"<distress-marker>"}}],output)
+    html=output.read_text(encoding="utf-8")
+    assert html.index("Audio interpretation")<html.index("&lt;audio-marker&gt;")<html.index("Distress explanation")<html.index("&lt;distress-marker&gt;")
+    assert "<script>scenario</script>" not in html and "&lt;script&gt;scenario" in html

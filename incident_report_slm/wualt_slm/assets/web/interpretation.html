@@ -2,8 +2,8 @@
 <body><header><a href="/">WUALT</a><span id="model-state">Connecting…</span></header><main>
 <section><p class="eyebrow">SIGNALS TO MEANING</p><h1>Interpret the situation.</h1><p>Send the backend's tone, transcript, keywords, sound events, state, HR/HRV, location and time.</p>
 <label for="payload">Backend input JSON</label><textarea id="payload" rows="22" spellcheck="false"></textarea>
-<div class="actions"><button id="example" type="button" class="secondary">Load fictional example</button><button id="generate" type="button">Generate interpretation</button></div>
+<div class="actions"><button id="example" type="button" class="secondary">Load fictional example</button><button id="generate" type="button">Generate interpretations</button></div>
 <p id="status" role="status"></p><p id="error" role="alert" hidden></p>
 <details><summary>Connection settings</summary><label for="key">API key, if required</label><input id="key" type="password" autocomplete="off"><button id="connect" type="button" class="secondary">Connect</button></details></section>
-<section class="result"><p class="eyebrow">MODEL OUTPUT</p><h2>Interpretation</h2><p id="empty">Your interpretation will appear here.</p><p id="interpretation" hidden></p><button id="copy" type="button" class="secondary" disabled>Copy interpretation</button></section>
-</main><footer>Generated interpretation for review. No report form or automatic alert is created.</footer></body></html>
+<section class="result"><p class="eyebrow">MODEL OUTPUT</p><h2>Two interpretations</h2><p id="empty">Both interpretations will appear here.</p><div id="interpretations" hidden><h3>Audio interpretation</h3><p class="scope">Transcript, tone and sound events only.</p><p id="audio-interpretation" class="interpretation"></p><h3>Distress explanation</h3><p class="scope">How the supplied evidence supports or conflicts with the state.</p><p id="distress-interpretation" class="interpretation"></p></div><button id="copy" type="button" class="secondary" disabled>Copy both interpretations</button></section>
+</main><footer>Generated interpretations for review. No report form or automatic alert is created.</footer></body></html>

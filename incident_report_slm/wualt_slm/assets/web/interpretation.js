@@ -8,6 +8,27 @@ async function connect(){try{const health=await request("/health");$("model-stat
 async function example(){try{$("payload").value=JSON.stringify(await request("/v1/interpretation-input-example"),null,2);$("error").hidden=true;}catch(error){fail(error.message);}}
 $("connect").addEventListener("click",connect);
 $("example").addEventListener("click",example);
-$("generate").addEventListener("click",async()=>{if(busy)return;busy=true;$("generate").disabled=true;$("error").hidden=true;$("interpretation").hidden=true;$("interpretation").textContent="";$("copy").disabled=true;$("empty").hidden=false;$("status").textContent="Interpreting the supplied signals…";try{const input=JSON.parse($("payload").value);const result=await request("/v1/interpretations",{method:"POST",body:JSON.stringify(input)});$("interpretation").textContent=result.interpretation;$("interpretation").hidden=false;$("empty").hidden=true;$("copy").disabled=false;$("status").textContent="Interpretation ready for review.";}catch(error){fail(error.message);$("status").textContent="No interpretation was generated.";}finally{busy=false;$("generate").disabled=false;}});
-$("copy").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("interpretation").textContent);$("status").textContent="Interpretation copied.";}catch{$("status").textContent="Select the interpretation text to copy it.";}});
+$("generate").addEventListener("click",async()=>{
+  if(busy)return;
+  busy=true;$("generate").disabled=true;$("error").hidden=true;
+  $("interpretations").hidden=true;
+  $("audio-interpretation").textContent="";$("distress-interpretation").textContent="";
+  $("copy").disabled=true;$("empty").hidden=false;
+  $("status").textContent="Generating audio interpretation and distress explanation…";
+  try{
+    const input=JSON.parse($("payload").value);
+    const result=await request("/v1/interpretations",{method:"POST",body:JSON.stringify(input)});
+    if(typeof result.audio_interpretation!=="string" || !result.audio_interpretation.trim() || typeof result.distress_interpretation!=="string" || !result.distress_interpretation.trim())throw new Error("The service did not return both interpretations. Check that the wrapper is version 0.13 or later.");
+    $("audio-interpretation").textContent=result.audio_interpretation;
+    $("distress-interpretation").textContent=result.distress_interpretation;
+    $("interpretations").hidden=false;$("empty").hidden=true;$("copy").disabled=false;
+    $("status").textContent="Both interpretations are ready for review.";
+  }catch(error){fail(error.message);$("status").textContent="The interpretation pair was not generated.";}
+  finally{busy=false;$("generate").disabled=false;}
+});
+$("copy").addEventListener("click",async()=>{
+  const text="Audio interpretation\n"+$("audio-interpretation").textContent+"\n\nDistress explanation\n"+$("distress-interpretation").textContent;
+  try{await navigator.clipboard.writeText(text);$("status").textContent="Both interpretations copied.";}
+  catch{$("status").textContent="Select the interpretation text to copy it.";}
+});
 connect();example();
