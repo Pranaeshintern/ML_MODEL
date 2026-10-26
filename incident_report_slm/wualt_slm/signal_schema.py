@@ -96,6 +96,52 @@ class SignalSentence(StrictModel):
 class SignalDraft(StrictModel):
     sentences: list[SignalSentence] = Field(min_length=1, max_length=5)
 
+Paragraph = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1800)]
+Issue = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+
+class AttemptDiagnostic(StrictModel):
+    attempt: int = Field(strict=True, ge=1, le=2)
+    issues: list[Issue] = Field(min_length=1, max_length=20)
+
+class SectionStatus(StrictModel):
+    status: Literal["generated", "not_available", "failed"]
+    reason: Literal["no_audio_evidence", "no_usable_audio_evidence", "grounding_failed", "generation_incomplete", "invalid_model_response", "model_unavailable"] | None = None
+    attempts: int = Field(strict=True, ge=0, le=2)
+    diagnostics: list[AttemptDiagnostic] = Field(default_factory=list, max_length=2)
+
+    @model_validator(mode="after")
+    def coherent(self):
+        if self.status == "generated" and (self.reason is not None or self.attempts == 0):
+            raise ValueError("Generated sections require a model attempt and no failure reason")
+        if self.status == "not_available" and (self.reason not in ("no_audio_evidence", "no_usable_audio_evidence") or self.attempts or self.diagnostics):
+            raise ValueError("Unavailable audio is a data status, not a model generation")
+        if self.status == "failed" and (self.reason not in ("grounding_failed", "generation_incomplete", "invalid_model_response", "model_unavailable") or self.attempts == 0):
+            raise ValueError("Failed sections require a failure reason and an attempt")
+        attempts = [item.attempt for item in self.diagnostics]
+        if attempts != sorted(set(attempts)) or any(n > self.attempts for n in attempts):
+            raise ValueError("Diagnostics must identify unique completed attempts in order")
+        if self.status == "failed" and (not attempts or attempts[-1] != self.attempts):
+            raise ValueError("Failure diagnostics must record the final rejected attempt")
+        if self.status == "generated" and any(n >= self.attempts for n in attempts):
+            raise ValueError("A successful attempt cannot also be recorded as rejected")
+        return self
+
+class SectionStatuses(StrictModel):
+    audio: SectionStatus
+    distress: SectionStatus
+
 class InterpretationResponse(StrictModel):
-    audio_interpretation: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1800)]
-    distress_interpretation: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=1800)]
+    audio_interpretation: Paragraph | None
+    distress_interpretation: Paragraph | None
+    sections: SectionStatuses
+
+    @model_validator(mode="after")
+    def coherent(self):
+        for name in ("audio", "distress"):
+            text = getattr(self, name + "_interpretation")
+            section = getattr(self.sections, name)
+            if (text is not None) != (section.status == "generated"):
+                raise ValueError("Only a generated section can contain interpretation prose")
+        if self.sections.distress.status == "not_available":
+            raise ValueError("The supplied state is always available to the distress call")
+        return self

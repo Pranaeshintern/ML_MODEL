@@ -20,7 +20,7 @@ from .schemas import SourceId,StrictModel
 from .settings import ASSET_ROOT,DATA_ROOT,allowed_origins
 
 backend=LlamaBackend();service=IncidentReportService(backend);store=IncidentStore(DATA_ROOT/'incident-reports.sqlite3');generation_lock=Lock()
-app=FastAPI(title='WUALT Signal Interpretation',version='0.13.0',description='Compact backend signals in; one interpretation out. Legacy report endpoints remain available for compatibility.')
+app=FastAPI(title='WUALT Signal Interpretation',version='0.14.0',description='Compact backend signals in; one interpretation out. Legacy report endpoints remain available for compatibility.')
 
 
 def authenticate(x_api_key:str|None=Header(default=None)):
@@ -64,7 +64,7 @@ async def missing(request,exc):return JSONResponse({'detail':'Report not found.'
 
 
 @app.get('/health')
-def health():return {'api':'ready','model_ready':backend.ready(),'prototype':True,'service':'wualt-incident-slm','workflow':'interpretation-only','version':'0.13.0','schemas':['interpretation-v1','incident-v1','incident-v2'],'report_mode':service.mode,'auth_required':bool(os.getenv('WUALT_API_KEY')),'database_configured':bool(os.getenv('WUALT_SOURCE_DB')),'server_configured':bool(os.getenv('WUALT_SOURCE_API_BASE'))}
+def health():return {'api':'ready','model_ready':backend.ready(),'prototype':True,'service':'wualt-incident-slm','workflow':'interpretation-only','version':'0.14.0','schemas':['interpretation-v1','incident-v1','incident-v2'],'report_mode':service.mode,'auth_required':bool(os.getenv('WUALT_API_KEY')),'database_configured':bool(os.getenv('WUALT_SOURCE_DB')),'server_configured':bool(os.getenv('WUALT_SOURCE_API_BASE'))}
 
 
 @router.get('/incident-examples')
@@ -135,7 +135,10 @@ def interpret_signals(data: InterpretationInput):
         raise HTTPException(503, 'The model is busy. Retry later.', headers={'Retry-After':'3'})
     try:
         try:
-            return SignalInterpreter(backend=backend).interpret(data)
+            result = SignalInterpreter(backend=backend).interpret(data)
+            if not any(result[name] is not None for name in ("audio_interpretation", "distress_interpretation")):
+                return JSONResponse(result, status_code=502)
+            return result
         except BackendUnavailable as exc:
             if str(exc) == 'model_busy':
                 raise HTTPException(503, 'The model is busy. Retry later.', headers={'Retry-After':'3'})

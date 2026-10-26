@@ -1,15 +1,15 @@
-# WUALT signal interpretation wrapper 0.13.0
+# WUALT signal interpretation wrapper 0.14.0
 
-The backend sends a compact JSON snapshot. The model explains what the supplied signals suggest and returns **two separate interpretation paragraphs**. Report forms, officer/wearer details, report numbers, PDF rendering and button-trigger logic are not part of this path.
+The backend sends a compact JSON snapshot. The model explains what the supplied signals suggest and returns **separate audio and distress interpretation results**, with a status for each section. Report forms, officer/wearer details, report numbers, PDF rendering and button-trigger logic are not part of this path.
 
 ## Architecture
 
-Backend signals → validate JSON and timing → two isolated model calls → check each paragraph → return both interpretations.
+Backend signals â†’ validate JSON and timing â†’ two isolated model calls â†’ check each paragraph â†’ return both interpretations.
 
 1. **Audio interpretation:** receives only transcript, tone and sound-event labels, with their reliability/confidence and speaker-attribution metadata. No supplied state, keywords, HR/HRV, activity, chat, location or snapshot/window timing is sent to this call. It explains what the audio observations suggest.
 2. **Distress explanation:** receives the validated backend evidence. It explains which observations support or conflict with the supplied state, and what remains uncertain. Keywords are derived hints, not independent corroboration. HR/HRV provide supporting context only. It does not claim to know the upstream classifier's internal reasoning or establish an unobserved cause.
 
-The calls are independent: the distress call uses original evidence, not the generated audio paragraph. Both must pass before a response is returned.
+The calls are independent: the distress call uses original evidence, not the generated audio paragraph. A failed section does not discard a valid section. If no usable audio observations are supplied, the audio model call is skipped and its status is `not_available`; the distress call still runs. This status is a data-availability notice, not fallback interpretation prose.
 
 The wrapper consumes already-produced transcript, tone labels, sound-event labels and a normal/stress/distress classification. It does not transcribe audio, detect sounds or train a classifier. The supplied state is context to assess, not ground truth to repeat. HR and HRV support the explanation; values alone do not establish distress, cause or a diagnosis.
 
@@ -44,16 +44,36 @@ The distress prompt relates the transcript, tone and sound events to the supplie
 
 ## Output
 
+The response keeps the two interpretation keys and adds `sections` metadata. Text is non-null only when that section was generated and passed validation. For example, a physiology-only request can return:
+
 ```json
 {
-  "audio_interpretation": "A paragraph interpreting only transcript, tone and sound events.",
-  "distress_interpretation": "A paragraph explaining evidence for or against the supplied state and relevant uncertainty."
+  "audio_interpretation": null,
+  "distress_interpretation": "A model-generated explanation of the supplied physiological context and its limits.",
+  "sections": {
+    "audio": {
+      "status": "not_available",
+      "reason": "no_audio_evidence",
+      "attempts": 0,
+      "diagnostics": []
+    },
+    "distress": {
+      "status": "generated",
+      "reason": null,
+      "attempts": 1,
+      "diagnostics": []
+    }
+  }
 }
 ```
 
-Only these two interpretation fields are returned. There are no report sections or echoed input fields. Internal sentence citations help detect invalid source references, wrong supplied-state names and invented numbers; they are not exposed in the response.
+Section status is `generated`, `not_available` (audio only) or `failed`. Missing or wholly unusable audio gets no model-generated text; the UI displays a clearly labeled availability notice. A transcript is not required if usable tone or sound-event evidence exists.
 
-Each model call allows one bounded revision for a failed grounding check. Truncated, invalid or still-flagged output in either call fails the entire request; a partial pair is never presented as success. Two model calls are required, so the old single-call latency does not apply. **Fallback is disabled.** These checks do not certify semantic accuracy; human review remains necessary.
+Each model call allows one bounded revision. Rejected output stays null; **fallback remains disabled**. The other section continues independently. No guards are disabled to make a failed paragraph appear successful. Rejected attempts record their specific validator messages in `diagnostics` and server warning logs, including when a later revision succeeds. These diagnostics never include raw input, rejected model prose, request IDs, exception strings or credentials. They identify which check failed; they do not establish semantic accuracy.
+
+HTTP 200 means at least one section was generated; callers must inspect both section statuses. If neither section was generated, HTTP 502 retains the structured section results and diagnostics. Invalid inputs still return 422 and model-busy responses return 503. Unexpected backend-level failures may return the existing 502 detail response.
+
+Most requests make two model calls; requests without usable audio make only the distress call. Legacy report APIs are unchanged. Input fields are not echoed into interpretation prose or the API response.
 
 ## Run
 
@@ -84,7 +104,7 @@ curl -X POST http://127.0.0.1:8000/v1/interpretations \
 wualt-slm interpret wualt_slm/assets/examples/interpretation-v1.json --output /workspace/review/interpretation.json
 ```
 
-`GET /v1/interpretation-input-example` returns the example; `/openapi.json` contains the full contract. The API returns 422 for invalid input, 502 for inference failure and 503 with Retry-After when busy. It does not dispatch assistance.
+`GET /v1/interpretation-input-example` returns the example; `/openapi.json` contains the full contract. The API returns 422 for invalid input, 502 when no section could be generated and 503 with Retry-After when busy. It does not dispatch assistance.
 
 Python:
 
@@ -97,7 +117,9 @@ print(result["distress_interpretation"])
 
 ## Compatibility and verification
 
-**v0.13 response change:** `/v1/interpretations`, `SignalInterpreter.interpret()` and the `interpret` CLI now return the two keys above instead of the v0.12 `interpretation` key. The `interpretation-v1` input JSON is unchanged. Update callers to read both keys.
+**v0.14 response change:** Each interpretation string is now nullable and the required `sections.audio` / `sections.distress` metadata explains missing or failed output. HTTP 200 can contain one generated section; inspect statuses instead of assuming both are present.
+
+**Earlier v0.13 response change:** `/v1/interpretations`, `SignalInterpreter.interpret()` and the `interpret` CLI now return the two keys above instead of the v0.12 `interpretation` key. The `interpretation-v1` input JSON is unchanged. Update callers to read both keys.
 
 The earlier `IncidentReporter`, `generate` command and `/v1/incident-reports` endpoints remain for explicit legacy callers. They are not used by the new interpretation endpoint or home page. Existing report requests retain their old schema; they are not silently converted into the compact contract.
 

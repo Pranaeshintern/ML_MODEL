@@ -54,11 +54,23 @@ def save_html(rows, target):
     for row in rows:
         if "output" in row:
             result=row["output"]
-            output="<h3>Audio interpretation</h3><p class='interpretation'>"+html.escape(result["audio_interpretation"])+"</p><h3>Distress explanation</h3><p class='interpretation'>"+html.escape(result["distress_interpretation"])+"</p>"
+            sections=[]
+            for name,title in [("audio","Audio interpretation"),("distress","Distress explanation")]:
+                state=result["sections"][name]
+                text=result[name+"_interpretation"]
+                if state["status"]=="generated":
+                    body="<p class='interpretation'>"+html.escape(text)+"</p>"
+                else:
+                    explanation={"no_audio_evidence":"No transcript, tone or sound events were supplied.","no_usable_audio_evidence":"No usable audio evidence was supplied."}.get(state["reason"],"This section was not generated. No fallback was substituted.")
+                    body="<p class='section-status'>"+html.escape(state["status"].replace('_',' ').capitalize()+": "+explanation)+"</p>"
+                if state["diagnostics"]:
+                    body+="<details><summary>Validation details</summary><pre>"+html.escape(json.dumps(state["diagnostics"],indent=2))+"</pre></details>"
+                sections.append("<h3>"+title+"</h3>"+body)
+            output="".join(sections)
         else:
             output="<p class='error'>Neither interpretation was returned: "+html.escape(row.get("error","No output"))+"</p>"
         cards.append("<article><h2>"+html.escape(row["scenario"])+"</h2><p class='state'>Supplied state: "+html.escape(row["input"]["state"]["label"])+"</p>"+output+"<details><summary>Input and manual review focus</summary><p>"+html.escape(row["review_focus"])+"</p><pre>"+html.escape(json.dumps(row["input"],indent=2,ensure_ascii=False))+"</pre></details></article>")
-    target.write_text("<!doctype html><html lang='en'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>WUALT interpretation review</title><style>body{font:16px/1.65 system-ui;background:#f3f6f4;color:#15382d;margin:0}main{max-width:960px;margin:40px auto;padding:0 24px}article{background:white;border:1px solid #d2e0d9;border-radius:12px;padding:24px;margin:20px 0;break-inside:avoid}h1{font-size:32px}h2{font-size:20px;margin:0}.state{color:#5c766b;font-size:13px}.interpretation{font-size:18px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}summary{cursor:pointer;color:#1b6d52}header p{color:#587366}</style><main><header><h1>WUALT interpretations</h1><p>Fictional scenarios · Separate audio and distress interpretations · Live Qwen3-14B output · Fallback disabled · Manual review required</p></header>"+"".join(cards)+"</main></html>",encoding="utf-8")
+    target.write_text("<!doctype html><html lang='en'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>WUALT interpretation review</title><style>body{font:16px/1.65 system-ui;background:#f3f6f4;color:#15382d;margin:0}main{max-width:960px;margin:40px auto;padding:0 24px}article{background:white;border:1px solid #d2e0d9;border-radius:12px;padding:24px;margin:20px 0;break-inside:avoid}h1{font-size:32px}h2{font-size:20px;margin:0}.state{color:#5c766b;font-size:13px}.interpretation{font-size:18px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}summary{cursor:pointer;color:#1b6d52}header p{color:#587366}</style><main><header><h1>WUALT interpretations</h1><p>Fictional scenarios Â· Separate audio and distress interpretations Â· Live Qwen3-14B output Â· Fallback disabled Â· Manual review required</p></header>"+"".join(cards)+"</main></html>",encoding="utf-8")
 
 def main():
     p=argparse.ArgumentParser();p.add_argument("--model-url",default="http://127.0.0.1:8081");p.add_argument("--output",type=Path,required=True)
@@ -70,8 +82,18 @@ def main():
         except Exception as exc:case["error"]=type(exc).__name__+": "+str(exc)
         case["seconds"]=round(time.monotonic()-started,3);rows.append(case)
         (args.output/"results.json").write_text(json.dumps(rows,indent=2,ensure_ascii=False),encoding="utf-8")
-        print(case["scenario"],"error" if "error" in case else "generated",case["seconds"],flush=True)
-    summary={"cases":len(rows),"generated":sum("output" in r for r in rows),"errors":sum("error" in r for r in rows),"median_seconds":round(statistics.median(r["seconds"] for r in rows),3),"fallback_enabled":False,"scope":"Fictional inputs; generation success is not semantic accuracy certification."}
+        print(case["scenario"],"request_error" if "error" in case else {k:v["status"] for k,v in case["output"]["sections"].items()},case["seconds"],flush=True)
+    def statuses(row):
+        return [s["status"] for s in row.get("output",{}).get("sections",{}).values()]
+    summary={"cases":len(rows),
+             "both_generated":sum(statuses(r).count("generated")==2 for r in rows),
+             "one_generated":sum(statuses(r).count("generated")==1 for r in rows),
+             "none_generated":sum("generated" not in statuses(r) for r in rows),
+             "failed_sections":sum(statuses(r).count("failed") for r in rows),
+             "unavailable_sections":sum(statuses(r).count("not_available") for r in rows),
+             "request_errors":sum("error" in r for r in rows),
+             "median_seconds":round(statistics.median(r["seconds"] for r in rows),3),
+             "fallback_enabled":False,"scope":"Fictional inputs; generation success is not semantic accuracy certification."}
     (args.output/"summary.json").write_text(json.dumps(summary,indent=2))
     save_html(rows,args.output/"Interpretation_Review.html")
     print(json.dumps(summary),flush=True)
