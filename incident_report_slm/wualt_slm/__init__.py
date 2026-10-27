@@ -2,6 +2,6 @@
 from .signal_schema import InterpretationInput, InterpretationResponse
 from .signal_interpretation import SignalInterpreter
 
-__version__ = "0.20.0"
+__version__ = "0.20.1"
 
 __all__ = ["SignalInterpreter", "InterpretationInput", "InterpretationResponse"]

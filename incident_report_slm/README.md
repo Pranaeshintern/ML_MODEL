@@ -1,4 +1,4 @@
-# WUALT interpretation API — 0.20.0
+# WUALT interpretation API — 0.20.1
 
 See [the deployment guide](../DEPLOYMENT.md) for model download and startup commands.
 
@@ -7,6 +7,8 @@ The wrapper accepts backend JSON and uses Qwen3-14B to return two independent pa
 2. `distress_interpretation`: original validated evidence, the supplied state and supporting context, including usable heart comparisons/current user chat.
 
 The backend owns the full report layout. This package does not transcribe audio, detect sounds, train weights, save reports or dispatch assistance.
+
+**0.20.1:** paragraphs no longer say a normal state is unsupported when their reasons describe a calm person, no longer describe tone or detections as high-confidence, and contain only English, with no original-script or copied original-language words. The request and response contract is unchanged.
 
 **0.20.0:** transcripts and chat may be in any language, script or romanized form, or mixed with English. Paragraphs are always written in English and keep the original's negation, tense and attribution. Some validator checks only read English, so for other languages those cases rely on the prompt rules; an injury in non-English speech may appear only as the person's reported account. The injury check no longer rejects negated sentences such as "does not confirm a wrist injury". The request and response contract is unchanged.
 
