@@ -136,6 +136,14 @@ def prepare_signals(data: InterpretationInput) -> list[dict]:
         add(f"CHAT{i}", {"role": message.role, "text": message.text, "timing": timing(message.at)})
     return facts
 
+
+def other_person_fear(facts):
+    """Recognize explicit third-party fear without overriding a first-person account."""
+    speech = next(f["data"]["text"] for f in facts if f["id"] == "TRANSCRIPT") or ""
+    other = re.search(r"(?i)\b(?:my|our) (?:friend|sister|brother|mother|father|partner|child|colleague)\b.{0,100}\b(?:afraid|scared|frightened|terrified|distress(?:ed)?|stressed|fear)\b", speech)
+    own = re.search(r"(?i)\bI(?: am|'m| feel)\s+(?:also\s+)?(?:afraid|scared|frightened|terrified|distress(?:ed)?|stressed)\b", speech)
+    return bool(other and not own)
+
 def draft_issues(draft: SignalDraft, facts: list[dict], *, section="distress") -> list[str]:
     """Structural/grounding diagnostics only, not semantic certification."""
     available = {f["id"]: f["data"] for f in facts}
@@ -158,6 +166,9 @@ def draft_issues(draft: SignalDraft, facts: list[dict], *, section="distress") -
     text = " ".join(s.text for s in draft.sentences)
     if re.search(r"(?i)\b(?:HRV|HR|RMSSD|SDNN)\b|root[ -]mean[ -]squar\w*|standard deviation of (?:normal|NN)|successive (?:RR|NN|heartbeat) (?:interval )?differences", text):
         issues.append("Use plain language: omit physiological acronyms and metric names. Say heart rate or variation between heartbeats only when useful.")
+    if section == "distress" and other_person_fear(facts) and re.search(
+            r"(?i)\b(?:speaker|wearer|subject)\s+(?:(?:may|might|could)\s+(?:be\s+)?)?(?:is|seems|appears|experienc(?:es|ing)|feels?)\s+(?:to\s+be\s+)?(?:experiencing\s+)?(?:emotional\s+)?(?:distress(?:ed)?|fear|afraid|frightened|scared)\b", text):
+        issues.append("The reported fear belongs to another person, not the speaker. Do not transfer it to the speaker even with may or might; explain that it does not establish the measured subject's distress.")
     if len(text) > 1800: issues.append("Keep the entire interpretation under 1800 characters.")
     if len(text.split()) > 130: issues.append("Keep the entire paragraph at most 130 words; combine related facts and remove repeated caveats.")
     if not available["TRANSCRIPT"]["speaker_verified"] and re.search(r"(?i)\b(?:the )?wearer\s+(?:reports|says|states|asks|denies|requests)\b", text):
@@ -231,6 +242,8 @@ def _generate_section(backend, client, facts, section):
         if section == "distress":
             state = next(f["data"]["label"] for f in facts if f["id"] == "STATE")
             prompt += "\nThe supplied state is exactly " + state + ". Put STATE in an evidence_ids array when assessing it; never write that ID in prose."
+            if other_person_fear(facts):
+                prompt += "\nThe transcript explicitly attributes fear to another person, with no direct first-person fear statement. Explain that person's account without transferring fear or distress to the speaker or measured subject, even as a hypothesis. Supporting heart readings alone cannot establish that person's emotional state."
             if audio_availability(facts):
                 prompt += "\nNo usable audio observations are supplied. Interpret any usable physiological comparisons and other actual evidence without requiring speech or inventing an incident. Do not infer a cause or an emotional state from physiology alone. Do not cite tone, events or keywords that are absent."
         if issues:

@@ -614,3 +614,22 @@ def test_bad_repair_stays_rejected_without_removing_proximity_guard(payload,monk
     assert result["sections"]["audio"]["status"]=="failed"
     assert result["audio_interpretation"] is None and result["distress_interpretation"]
     assert len(requests)==3
+
+
+@pytest.mark.parametrize("prose,should_reject",[
+    ("The speaker may be experiencing distress, as they reported their friend is afraid of a dog.",True),
+    ("The speaker is frightened because their friend is afraid of a dog.",True),
+    ("The friend is reported to be afraid. This does not establish the speaker's distress.",False),
+    ("The speaker's own state is uncertain; the reported fear belongs to a friend.",False),
+])
+def test_third_party_fear_is_not_transferred_to_speaker(payload,prose,should_reject):
+    payload["transcript"]="My friend says she is afraid of a dog."
+    facts=prepare_signals(InterpretationInput.model_validate(payload))
+    draft=SignalDraft.model_validate({"sentences":[{"text":prose,"evidence_ids":["STATE","TRANSCRIPT"]}]})
+    assert any("reported fear belongs" in i for i in draft_issues(draft,facts)) is should_reject
+
+
+def test_direct_first_person_fear_is_not_discarded_with_third_party_account(payload):
+    from wualt_slm.signal_interpretation import other_person_fear
+    payload["transcript"]="My friend is afraid of the dog. I am also frightened."
+    assert not other_person_fear(prepare_signals(InterpretationInput.model_validate(payload)))
