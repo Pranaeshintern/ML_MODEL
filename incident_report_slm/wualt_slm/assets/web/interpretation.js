@@ -10,8 +10,8 @@ $("connect").addEventListener("click",connect);
 $("example").addEventListener("click",example);
 const sectionNames=["audio","distress"];
 const sectionMessages={
-  no_audio_evidence:"No transcript, tone or sound events were supplied.",
-  no_usable_audio_evidence:"No usable audio observations were supplied.",
+  no_audio_evidence:"Not enough audio data to provide an interpretation. No transcript, tone or sound events were supplied.",
+  no_usable_audio_evidence:"Not enough reliable audio data to provide an interpretation.",
   grounding_failed:"The generated paragraph failed validation and was not returned.",
   generation_incomplete:"The model did not finish this paragraph.",
   invalid_model_response:"The model returned an invalid response for this section.",
@@ -31,7 +31,7 @@ $("generate").addEventListener("click",async()=>{
   $("interpretations").hidden=true;
   for(const name of sectionNames){$(name+"-interpretation").textContent="";$(name+"-interpretation").hidden=true;$(name+"-status").textContent="";$(name+"-status").hidden=true;}
   $("copy").disabled=true;$("empty").hidden=false;
-  $("status").textContent="Generating audio interpretation and distress explanation…";
+  $("status").textContent="Generating audio interpretation and distress explanationâ€¦";
   try{
     const input=JSON.parse($("payload").value);
     const result=await request("/v1/interpretations",{method:"POST",body:JSON.stringify(input)});

@@ -47,6 +47,9 @@ def cases():
     add("zero-confidence","Zero confidence labels must not be treated as reliable.",lambda p:p.update(state={"label":"distress","confidence":0},tone={"label":"frightened","confidence":0},events=[{"label":"dog barking","confidence":0}]))
     add("old-chat","Earlier chat plan does not establish the current reason for distress.",lambda p:p.update(chat_context=[{"at":"2026-10-26T09:00:00+05:30","role":"user","text":"I plan to go jogging."}]))
     add("assistant-question","An assistant question is not a user report of danger.",lambda p:p.update(transcript="I am waiting here.",state={"label":"normal"},tone={"label":"calm"},events=[],keywords={},chat_context=[{"at":"2026-10-26T11:29:00+05:30","role":"assistant","text":"Are you being attacked?"}]))
+    add("unreliable-transcript-only","Do not interpret an unreliable transcript as sufficient data; give a clear limitation.",lambda p:p.update(transcript="Help me.",transcript_reliability="unreliable",tone=None,events=[],keywords={}))
+    add("unusable-physiology-only","Unusable measurements cannot explain the state; say there is not enough reliable information.",lambda p:p.update(transcript=None,transcript_reliability="unavailable",tone=None,events=[],keywords={},hr={**p["hr"],"signal_quality":"unreliable"},hrv={**p["hrv"],"signal_quality":"unreliable"}))
+    add("keywords-only","Extracted keywords without reliable original observations cannot establish an incident.",lambda p:p.update(transcript=None,transcript_reliability="unavailable",tone=None,events=[],hr=None,hrv=None))
     return items
 
 def save_html(rows, target):
@@ -61,7 +64,7 @@ def save_html(rows, target):
                 if state["status"]=="generated":
                     body="<p class='interpretation'>"+html.escape(text)+"</p>"
                 else:
-                    explanation={"no_audio_evidence":"No transcript, tone or sound events were supplied.","no_usable_audio_evidence":"No usable audio evidence was supplied."}.get(state["reason"],"This section was not generated. No fallback was substituted.")
+                    explanation={"no_audio_evidence":"Not enough audio data to provide an interpretation. No transcript, tone or sound events were supplied.","no_usable_audio_evidence":"Not enough reliable audio data to provide an interpretation."}.get(state["reason"],"This section was not generated. No fallback was substituted.")
                     body="<p class='section-status'>"+html.escape(state["status"].replace('_',' ').capitalize()+": "+explanation)+"</p>"
                 if state["diagnostics"]:
                     body+="<details><summary>Validation details</summary><pre>"+html.escape(json.dumps(state["diagnostics"],indent=2))+"</pre></details>"
@@ -70,7 +73,7 @@ def save_html(rows, target):
         else:
             output="<p class='error'>Neither interpretation was returned: "+html.escape(row.get("error","No output"))+"</p>"
         cards.append("<article><h2>"+html.escape(row["scenario"])+"</h2><p class='state'>Supplied state: "+html.escape(row["input"]["state"]["label"])+"</p>"+output+"<details><summary>Input and manual review focus</summary><p>"+html.escape(row["review_focus"])+"</p><pre>"+html.escape(json.dumps(row["input"],indent=2,ensure_ascii=False))+"</pre></details></article>")
-    target.write_text("<!doctype html><html lang='en'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>WUALT interpretation review</title><style>body{font:16px/1.65 system-ui;background:#f3f6f4;color:#15382d;margin:0}main{max-width:960px;margin:40px auto;padding:0 24px}article{background:white;border:1px solid #d2e0d9;border-radius:12px;padding:24px;margin:20px 0;break-inside:avoid}h1{font-size:32px}h2{font-size:20px;margin:0}.state{color:#5c766b;font-size:13px}.interpretation{font-size:18px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}summary{cursor:pointer;color:#1b6d52}header p{color:#587366}</style><main><header><h1>WUALT interpretations</h1><p>Fictional scenarios Â· Separate audio and distress interpretations Â· Live Qwen3-14B output Â· Fallback disabled Â· Manual review required</p></header>"+"".join(cards)+"</main></html>",encoding="utf-8")
+    target.write_text("<!doctype html><html lang='en'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>WUALT interpretation review</title><style>body{font:16px/1.65 system-ui;background:#f3f6f4;color:#15382d;margin:0}main{max-width:960px;margin:40px auto;padding:0 24px}article{background:white;border:1px solid #d2e0d9;border-radius:12px;padding:24px;margin:20px 0;break-inside:avoid}h1{font-size:32px}h2{font-size:20px;margin:0}.state{color:#5c766b;font-size:13px}.interpretation{font-size:18px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}summary{cursor:pointer;color:#1b6d52}header p{color:#587366}</style><main><header><h1>WUALT interpretations</h1><p>Fictional scenarios Ãƒâ€šÃ‚Â· Separate audio and distress interpretations Ãƒâ€šÃ‚Â· Live Qwen3-14B output Ãƒâ€šÃ‚Â· Fallback disabled Ãƒâ€šÃ‚Â· Manual review required</p></header>"+"".join(cards)+"</main></html>",encoding="utf-8")
 
 def main():
     p=argparse.ArgumentParser();p.add_argument("--model-url",default="http://127.0.0.1:8081");p.add_argument("--output",type=Path,required=True)
