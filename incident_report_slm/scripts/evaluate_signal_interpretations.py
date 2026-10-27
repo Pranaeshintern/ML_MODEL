@@ -77,11 +77,12 @@ def main():
     p=argparse.ArgumentParser();p.add_argument("--model-url",default="http://127.0.0.1:8081");p.add_argument("--output",type=Path,required=True);p.add_argument("--suite",choices=("expanded","diverse","original"),default="expanded")
     args=p.parse_args();args.output.mkdir(parents=True,exist_ok=True)
     interpreter=SignalInterpreter(args.model_url);rows=[]
+    rejected=[];runpy.run_path(str(Path(__file__).with_name("draft_capture.py")))["capture_rejections"](rejected)
     for case in cases(args.suite):
-        started=time.monotonic()
+        rejected.clear();started=time.monotonic()
         try:case["output"]=interpreter.interpret(case["input"])
         except Exception as exc:case["error"]=type(exc).__name__+": "+str(exc)
-        case["seconds"]=round(time.monotonic()-started,3);rows.append(case)
+        case["seconds"]=round(time.monotonic()-started,3);case["rejected_drafts"]=list(rejected);rows.append(case)
         (args.output/"results.json").write_text(json.dumps(rows,indent=2,ensure_ascii=False),encoding="utf-8")
         print(case["scenario"],"request_error" if "error" in case else {k:v["status"] for k,v in case["output"]["sections"].items()},case["seconds"],flush=True)
     def statuses(row):
@@ -93,6 +94,7 @@ def main():
              "failed_sections":sum(statuses(r).count("failed") for r in rows),
              "unavailable_sections":sum(statuses(r).count("not_available") for r in rows),
              "request_errors":sum("error" in r for r in rows),
+             "rejected_drafts":sum(len(r["rejected_drafts"]) for r in rows),
              "median_seconds":round(statistics.median(r["seconds"] for r in rows),3),
              "fallback_enabled":False,"scope":"Fictional inputs; generation success is not semantic accuracy certification."}
     (args.output/"summary.json").write_text(json.dumps(summary,indent=2))

@@ -79,6 +79,44 @@ def current_user_chat(available):
             and item.get("timing") in CURRENT_TIMES and item.get("usable", True)}
 
 
+# The sentence denies support for a normal state while giving reasons that describe one.
+CALM_REASON = r"\b(?:calm|relaxed|fine|okay|ok|cheerful|happy|just (?:playing|joking|singing|tired|waiting|resting)|not (?:in )?(?:distress\w*|stressed|scared|afraid|frightened|alarmed|worried|in danger)|no (?:stress|distress|fear|signs? of distress)|not the speaker'?s own|not (?:their|his|her) own)\b"
+DANGER_CUE = r"\b(?:help|unsafe|danger\w*|threat\w*|hurt\w*|pain\w*|injur\w*|trapped|followed|attack\w*)\b"
+CONFIDENCE_WORDS = r"\b(?:high|higher|very high|strong|full|good|great|considerable)\s+(?:level of\s+|degree of\s+)?(?:confidence|certainty)\b|\bconfident(?:ly)?\s+(?:detected|identified|classified)\b"
+QUOTED = r"(?<!\w)['‘\"“]([^'’\"”]{2,60}?)['’\"”](?!\w)"
+
+
+def inverted_normal(text):
+    """'Does not support the normal state' whose stated reasons are calm/not distressed."""
+    if not re.search(CALM_REASON, text, re.I):
+        return False
+    fears = [m for m in re.finditer(FEAR + "|" + DANGER_CUE, text, re.I)
+             if not re.search(r"\b(?:not|no|never|without)\b(?:\s+\w+){0,2}\s*$", text[max(0, m.start()-25):m.start()], re.I)]
+    if fears:
+        return False
+    return any(re.search(r"\bnormal\b", text[m.end():m.end()+50], re.I) for m in label_support(text, negated=True))
+
+
+def copied_original_words(text, available):
+    """Original-script letters, or quoted original-language words copied into the English paragraph."""
+    if any(ch.isalpha() and ord(ch) > 0x24F for ch in text):
+        return True
+    chats = current_user_chat(available)
+    keywords = available.get("KEYWORDS", {})
+    sources = [available.get("TRANSCRIPT", {}).get("text") or ""] + [item["text"] for item in chats.values()] \
+        + [w for key in ("stress", "distress") for w in keywords.get(key, [])]
+    # Quoted words count as copied only when the speech or message itself is not English.
+    observed = " ".join(s for s in sources[:1 + len(chats)] if s)
+    if english_like(observed):
+        return False
+    foreign = [s.lower() for s in sources if s]
+    for quoted in re.findall(QUOTED, text):
+        phrase = quoted.strip(" .,!?;:").lower()
+        if phrase and not english_like(phrase) and any(phrase in source for source in foreign):
+            return True
+    return False
+
+
 def attributed_actor(speech):
     """The actor (e.g. a game character) the speech says is calling out, if any."""
     match = re.search(ACTOR + r"[^.!?]{0,60}" + CALL, speech or "", re.I)
@@ -118,6 +156,11 @@ def review_grounding_issues(draft, available, section):
         issues.append("Preserve the explicitly happy meaning. Crying and the supplied state do not establish mixed emotions; do not add conflicting feelings absent from the observations.")
     if section == "distress" and chats and not (cited & chats.keys()):
         issues.append("Consider the current user chat as written testimony and cite its source. Do not silently discard it when assessing the supplied state; distinguish it from spoken audio.")
+    if any(not re.search(r"\b(?:not|never|without)\b[^.;]{0,25}$", all_text[max(0, m.start()-30):m.start()], re.I)
+           for m in re.finditer(CONFIDENCE_WORDS, all_text, re.I)):
+        issues.append("Do not describe tone or detection confidence as high, strong or moderate. Describe the observation itself; only a low-certainty sound may be qualified as possible or tentative.")
+    if copied_original_words(all_text, available):
+        issues.append("Write only in English. Give the English meaning instead of copying words from the original language or script, even in quotes or parentheses.")
     if speech and reliability == "usable" and re.search(RELIABILITY_DOUBT, all_text, re.I):
         issues.append("The transcript is marked usable. Do not add a transcription-reliability caveat; mention reliability only when it is limited, unreliable or unknown.")
     if section == "distress" and resolved and state in ("stress", "distress") and not (
@@ -128,6 +171,8 @@ def review_grounding_issues(draft, available, section):
     for sentence in draft.sentences:
         text = sentence.text
         ids = set(sentence.evidence_ids)
+        if section == "distress" and state == "normal" and inverted_normal(text):
+            issues.append("This sentence says the observations do not support the normal state, but its reasons describe a calm or non-distressed person. If the observations fit the normal state, say they are consistent with it.")
         if ids & {"HR", "HRV"} and re.search(HEART, text, re.I) and re.search(HEART_TREND, text, re.I):
             issues.append("Each heart reading is one measurement compared with one reference. Do not describe readings as remaining, staying steady or consistent, or rising or falling over the window; state only the supplied comparison.")
         if actor and "TRANSCRIPT" in ids and re.search(CALL + r"[^.;]{0,25}\bhelp\b|\bhelp\b[^.;]{0,25}" + CALL, text, re.I) and actor not in text.lower():

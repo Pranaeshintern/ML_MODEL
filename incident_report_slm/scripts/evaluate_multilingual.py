@@ -17,16 +17,7 @@ HERE = Path(__file__).parent
 
 
 def capture_rejections(store):
-    original = interpretation.draft_issues
-
-    def recording(draft, facts, *, section="distress"):
-        issues = original(draft, facts, section=section)
-        if issues:
-            store.append({"section": section, "draft": " ".join(s.text for s in draft.sentences), "issues": issues})
-        return issues
-
-    interpretation.draft_issues = recording
-    return original
+    return runpy.run_path(str(HERE / "draft_capture.py"))["capture_rejections"](store)
 
 
 def main(argv=None):

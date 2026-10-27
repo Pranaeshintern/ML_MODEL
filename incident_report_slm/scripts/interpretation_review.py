@@ -32,6 +32,10 @@ def save_html(rows, target, metadata=None):
             if state.get("status")=="failed" and state.get("diagnostics"):
                 messages=[issue for attempt in state["diagnostics"] for issue in attempt["issues"]]
                 body+="<details><summary>Why this section failed</summary><ul>"+"".join("<li>"+esc(issue)+"</li>" for issue in messages)+"</ul></details>"
+            drafts=[d for d in row.get("rejected_drafts",[]) if d["section"]==name]
+            if drafts:
+                # Review-only: rejected model prose captured by the evaluation script, never served by the API.
+                body+="<details><summary>Rejected drafts ("+str(len(drafts))+")</summary>"+"".join("<p class='small'><strong>Rejected draft:</strong> "+esc(d["draft"])+"</p><ul>"+"".join("<li>"+esc(i)+"</li>" for i in d["issues"])+"</ul>" for d in drafts)+"</details>"
             sections.append("<section><h3>"+heading+"</h3>"+body+"</section>")
         status="pending" if pending and not output and "error" not in row else "failed" if "error" in row or any(s["status"]=="failed" for s in (output or {}).get("sections",{}).values()) else "insufficient" if all(s["status"]=="not_available" for s in output["sections"].values()) else "generated"
         search=" ".join([title,category,row["scenario"],row.get("description", "")]).lower()
