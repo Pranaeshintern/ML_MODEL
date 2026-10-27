@@ -1,4 +1,4 @@
-# WUALT signal interpretation wrapper 0.16.0
+# WUALT signal interpretation wrapper 0.17.0
 
 The backend sends a compact JSON snapshot. The model explains what the supplied signals suggest and returns **separate audio and distress interpretation results**, with a status for each section. Report forms, officer/wearer details, report numbers, PDF rendering and button-trigger logic are not part of this path.
 
@@ -135,4 +135,4 @@ pytest -q
 python scripts/evaluate_signal_interpretations.py --model-url http://127.0.0.1:8081 --output /workspace/review/signals
 ```
 
-Unit tests simulate inference. The evaluation command runs 37 fictional cases against a live model and writes interpretation results separately from source code. Generation success and structural checks are not semantic accuracy scores. Do not commit generated outputs or model weights.
+Unit tests simulate inference. The evaluation command runs 117 fictional cases against a live model: 80 independently constructed situations across 10 categories, plus the original 37 regression checks. Use `--suite diverse` for the 80 new cases or `--suite original` for the original cases. Situations cover personal safety, accidents, reported physical symptoms, everyday pressures, exercise, environmental sounds, meaning and attribution, chat, incomplete data and multiple languages. New inputs start without inherited dog, sound or sensor observations. The standalone report has readable scenario titles, filters, two separate interpretations and exact input JSON; generated paragraphs are preserved unchanged. Scenario descriptions and review criteria are not sent to the model. Results remain separate from source code. Generation success and structural checks are not semantic accuracy scores. Do not commit generated outputs or model weights.
