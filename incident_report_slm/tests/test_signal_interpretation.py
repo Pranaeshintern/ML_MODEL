@@ -140,7 +140,8 @@ def test_failure_has_no_fallback_and_releases_lock(payload,monkeypatch,reply):
     result=SignalInterpreter(backend=backend).interpret(payload)
     assert result["audio_interpretation"] is None and result["distress_interpretation"] is None
     assert all(section["status"]=="failed" for section in result["sections"].values())
-    assert len(requests)<=4 and backend._lock.acquire(blocking=False)
+    # An unchanged revision is re-requested once per section: at most 3 calls each.
+    assert len(requests)<=6 and backend._lock.acquire(blocking=False)
     backend._lock.release()
 
 def test_number_not_supported_by_citations_is_rejected(payload):
@@ -307,7 +308,7 @@ def test_second_call_failure_preserves_audio_and_unlocks(payload,monkeypatch,rep
     assert result["audio_interpretation"]=="The plea to keep a dog away relates to the reported barking and frightened tone."
     assert result["distress_interpretation"] is None
     assert result["sections"]["audio"]["status"]=="generated" and result["sections"]["distress"]["status"]=="failed"
-    assert 2<=len(requests)<=3
+    assert 2<=len(requests)<=4
     assert backend._lock.acquire(blocking=False)
     backend._lock.release()
 
@@ -385,9 +386,11 @@ def test_html_review_separates_both_outputs_and_escapes_text(payload,tmp_path):
 
 
 def test_failed_audio_does_not_suppress_distress(payload,monkeypatch):
-    requests=install_transport(monkeypatch,[audio_choice(ids=["INVENTED"]),audio_choice(ids=["INVENTED"]),choice()])
+    requests=install_transport(monkeypatch,[audio_choice(ids=["INVENTED"]),audio_choice(ids=["INVENTED"]),audio_choice(ids=["INVENTED"]),choice()])
     result=SignalInterpreter(backend=LlamaBackend()).interpret(payload)
-    assert len(requests)==3 and result["audio_interpretation"] is None
+    # The identical revision triggers one re-request without the rejected draft in context.
+    assert len(requests)==4 and result["audio_interpretation"] is None
+    assert not any(m["role"]=="assistant" for m in requests[2]["messages"]) and requests[2]["seed"]!=requests[1]["seed"]
     assert result["distress_interpretation"]=="The request for help supports the supplied distress label."
     assert result["sections"]["audio"]["reason"]=="grounding_failed"
     assert [d["attempt"] for d in result["sections"]["audio"]["diagnostics"]]==[1,2]
@@ -610,11 +613,12 @@ def test_instruction_only_transcript_does_not_contaminate_other_audio(payload,mo
 
 
 def test_bad_repair_stays_rejected_without_removing_proximity_guard(payload,monkeypatch):
-    requests=install_transport(monkeypatch,[audio_choice("A dog is nearby."),audio_choice("A dog is nearby."),choice()])
+    requests=install_transport(monkeypatch,[audio_choice("A dog is nearby."),audio_choice("A dog is nearby."),audio_choice("A dog is nearby."),choice()])
     result=SignalInterpreter(backend=LlamaBackend()).interpret(payload)
     assert result["sections"]["audio"]["status"]=="failed"
     assert result["audio_interpretation"] is None and result["distress_interpretation"]
-    assert len(requests)==3
+    assert len(requests)==4
+    assert any("repeated the rejected draft" in i for d in result["sections"]["audio"]["diagnostics"] for i in d["issues"])
 
 
 @pytest.mark.parametrize("prose,should_reject",[

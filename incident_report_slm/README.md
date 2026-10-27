@@ -1,4 +1,4 @@
-# WUALT signal interpretation wrapper 0.20.1
+# WUALT signal interpretation wrapper 0.20.2
 
 The backend sends a compact JSON snapshot. The model explains what the supplied signals suggest and returns **separate audio and distress interpretation results**, with a status for each section. Report forms, officer/wearer details, report numbers, PDF rendering and button-trigger logic are not part of this package.
 
@@ -14,6 +14,14 @@ The calls are independent: the distress call uses original evidence, not the gen
 The wrapper consumes already-produced transcript, tone labels, sound-event labels and a normal/stress/distress classification. It does not transcribe audio, detect sounds or train a classifier. The supplied state is context to assess, not ground truth to repeat. HR and HRV support the explanation; values alone do not establish distress, cause or a diagnosis.
 
 The model configuration remains Qwen3-14B Q8_0 with llama.cpp b11582. This release changes the input contract, prompt and output interface; it does not train model weights. Exact model revision and checksums are in `wualt_slm/assets/runtime.lock.json`.
+
+## Revision fixes in 0.20.2
+
+The 0.20.1 live run showed that both failed sections repeated the rejected draft word for word in the second attempt. Prompt version `wualt-signals-v16-revision-hints`:
+
+- The revision request now names the exact wording to change, for example `Replace "a wrist injury"` or `Replace "miedo"`. These hints quote model prose and input words, so they go only to the model. API diagnostics keep the generic validator messages.
+- If the revision still repeats the rejected draft (same prose and citations), the wrapper asks once more without the rejected draft in context and with slightly different sampling (temperature 0.4, a different seed). This is still attempt 2, so `attempts` stays at most 2. If that answer is rejected too, the diagnostics add "The revision repeated the rejected draft unchanged."
+- The heart-trend check no longer rejects negations such as "do not indicate a trend"; three of four heart-trend rejections in the 0.20.1 run were this false positive. "Remained consistent" is still rejected.
 
 ## Wording fixes in 0.20.1
 

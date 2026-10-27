@@ -198,3 +198,80 @@ def test_report_shows_rejected_drafts(tmp_path):
     runpy.run_path(str(ROOT / "scripts/interpretation_review.py"))["save_html"]([row], target)
     html = target.read_text(encoding="utf-8")
     assert "Rejected drafts (1)" in html and "The knee &lt;injury&gt; explains it." in html
+
+
+# 0.20.2: name offending words in revisions and re-request an identical rewrite.
+
+def replay(monkeypatch, replies):
+    """Fake model server returning the given (text, ids) drafts in order; the last repeats."""
+    requests = []
+
+    def handler(request):
+        requests.append(json.loads(request.content))
+        text, ids = replies[min(len(requests) - 1, len(replies) - 1)]
+        content = json.dumps({"sentences": [{"text": text, "evidence_ids": ids}]})
+        return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": content}}]})
+
+    real_client = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs))
+    return requests
+
+
+LIVE_WRIST = "The person reports a wrist injury and requests help, which may indicate distress. The tone is described as pained, which is consistent with the reported injury."
+
+
+def test_live_wrist_repeat_is_re_requested_with_named_words(monkeypatch):
+    audio = ("The person says their wrist hurts a lot after bumping it and that they need help.", ["TRANSCRIPT", "TONE"])
+    fixed = ("The person says their wrist hurts a lot after bumping it and asks for help, which may fit the distress state.", ["TRANSCRIPT", "STATE"])
+    requests = replay(monkeypatch, [audio, (LIVE_WRIST, ["TRANSCRIPT", "TONE", "STATE"]), (LIVE_WRIST, ["TRANSCRIPT", "TONE", "STATE"]), fixed])
+    result = SignalInterpreter(backend=LlamaBackend()).interpret(EXPANDED["pain-unchanged-heart"])
+    assert result["sections"]["distress"]["status"] == "generated" and result["sections"]["distress"]["attempts"] == 2
+    assert result["distress_interpretation"] == fixed[0]
+    revision, rerequest = requests[2], requests[3]
+    assert "a wrist injury" in revision["messages"][0]["content"] and "a wrist injury" in revision["messages"][-1]["content"]
+    assert not any(m["role"] == "assistant" for m in rerequest["messages"])
+    assert "a wrist injury" in rerequest["messages"][0]["content"]
+    assert rerequest["temperature"] > 0 and rerequest["seed"] != revision["seed"]
+    # Named words are prompt-only: diagnostics keep only the generic validator message.
+    flat = json.dumps(result["sections"])
+    assert "wrist injury" not in flat and "confirmed injury" in flat
+
+
+def test_live_miedo_repeat_names_the_word_and_fails_safely(monkeypatch):
+    draft = ("The person reports their sister is very afraid, and the keyword 'miedo' (fear) does not show the speaker's distress.", ["TRANSCRIPT", "KEYWORDS", "STATE"])
+    audio = ("The speaker says their sister is very scared because the lights went out, but the speaker feels calm.", ["TRANSCRIPT", "TONE"])
+    requests = replay(monkeypatch, [audio, draft])
+    result = SignalInterpreter(backend=LlamaBackend()).interpret(CASES["spanish-sister-fear"]["input"])
+    assert result["sections"]["distress"]["status"] == "failed" and result["distress_interpretation"] is None
+    assert len(requests) == 4
+    assert '"miedo"' in requests[2]["messages"][0]["content"]
+    issues = [i for d in result["sections"]["distress"]["diagnostics"] for i in d["issues"]]
+    assert any("repeated the rejected draft" in i for i in issues)
+    assert "miedo" not in json.dumps(result["sections"])
+
+
+def test_changed_citations_are_not_an_identical_rewrite(monkeypatch):
+    good = "The person asks for help to keep a dog away, which may support the supplied distress state."
+    requests = replay(monkeypatch, [("The plea to keep a dog away relates to the reported barking.", ["INVENTED"]),
+                                    ("The plea to keep a dog away relates to the reported barking.", ["TRANSCRIPT", "EVENT1"]),
+                                    (good, ["TRANSCRIPT", "STATE"])])
+    payload = json.loads((ROOT / "wualt_slm/assets/examples/interpretation-v1.json").read_text(encoding="utf-8"))
+    result = SignalInterpreter(backend=LlamaBackend()).interpret(payload)
+    assert result["sections"]["audio"]["status"] == "generated" and len(requests) == 3
+
+
+@pytest.mark.parametrize("text", [
+    "Heart rate was above the reference, but these measurements are single comparisons and do not indicate a trend.",
+    "Heart readings are single comparisons and do not establish a trend or emotional state.",
+])
+def test_negated_trend_wording_is_accepted(text):
+    assert not any("one measurement compared" in i for i in check(EXPANDED["zero-confidence"], text, ["HR", "HRV", "STATE"]))
+
+
+def test_hints_name_whole_words_in_other_scripts():
+    from wualt_slm.interpretation_grounding import revision_hints
+    payload = CASES["marathi-negation"]["input"]
+    facts = {f["id"]: f["data"] for f in prepare_signals(InterpretationInput.model_validate(payload))}
+    draft = SignalDraft.model_validate({"sentences": [{"text": "The word 'भीती' (fear) is a keyword, but the person denies fear.", "evidence_ids": ["TRANSCRIPT", "KEYWORDS"]}]})
+    hints = revision_hints(draft, facts, "distress")
+    assert any('"भीती"' in h for h in hints) and not any('"भ"' in h for h in hints)
