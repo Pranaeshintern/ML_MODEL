@@ -315,16 +315,6 @@ def test_revision_budget_is_separate_for_each_interpretation(payload,monkeypatch
     assert "Revision requirements" not in requests[2]["messages"][0]["content"]
 
 
-def test_missing_audio_is_not_filled_from_physiology_or_state(payload,monkeypatch):
-    payload.update(transcript=None,transcript_reliability="unavailable",tone=None,events=[],keywords={})
-    requests=install_transport(monkeypatch,[choice("The supplied distress label cannot be explained by physiology alone.",["STATE","HR","HRV"])])
-    result=SignalInterpreter(backend=LlamaBackend()).interpret(payload)
-    assert len(requests)==1
-    assert requests[0]["response_format"]["json_schema"]["name"]=="distress_interpretation"
-    assert result["audio_interpretation"] is None
-    assert result["sections"]["audio"]=={"status":"not_available","reason":"no_audio_evidence","attempts":0,"diagnostics":[]}
-    assert result["sections"]["distress"]["status"]=="generated"
-    assert "not enough reliable situational evidence" in requests[0]["messages"][0]["content"]
 
 
 @pytest.mark.parametrize("text",[
@@ -436,12 +426,6 @@ def test_missing_transcript_does_not_skip_available_audio(payload,monkeypatch,av
     assert len(requests)==2 and result["sections"]["audio"]["status"]=="generated"
 
 
-def test_unusable_audio_gets_status_without_fallback(payload,monkeypatch):
-    payload.update(transcript=None,transcript_reliability="unavailable",tone={"label":"frightened","confidence":0},events=[{"label":"dog barking","confidence":0}])
-    requests=install_transport(monkeypatch,[choice("There is not enough reliable information to explain the supplied distress label.",["STATE"])])
-    result=SignalInterpreter(backend=LlamaBackend()).interpret(payload)
-    assert len(requests)==1 and result["audio_interpretation"] is None
-    assert result["sections"]["audio"]["reason"]=="no_usable_audio_evidence"
 
 
 def test_transport_failure_preserves_previous_section(payload,monkeypatch):
@@ -482,18 +466,6 @@ def test_report_export_retains_partial_text_and_exact_failure(payload,tmp_path):
 
 
 
-def test_api_physiology_only_input_generates_distress_without_audio(payload,monkeypatch):
-    import wualt_slm.incident_api as api
-    payload.update(transcript=None,transcript_reliability="unavailable",tone=None,events=[],keywords={})
-    prose="There is not enough reliable information to explain the supplied distress label. The heart measurements alone cannot establish its cause."
-    requests=install_transport(monkeypatch,[choice(prose,["STATE","HR","HRV"])])
-    monkeypatch.setattr(api,"backend",LlamaBackend());monkeypatch.delenv("WUALT_API_KEY",raising=False)
-    with TestClient(api.app) as client:
-        response=client.post("/v1/interpretations",json=payload)
-    assert response.status_code==200 and len(requests)==1
-    assert response.json()["audio_interpretation"] is None
-    assert response.json()["distress_interpretation"]==prose
-    assert response.json()["sections"]["audio"]["status"]=="not_available"
 
 
 @pytest.mark.parametrize("term", ["RMSSD", "rmssd", "SDNN", "HRV", "HR", "root mean square of successive differences"])
@@ -514,16 +486,6 @@ def test_metric_names_stay_in_input_but_not_model_measurement_evidence(payload):
     assert facts["HRV"]["comparison_direction"] == "below"
 
 
-@pytest.mark.parametrize("physiology", [True, False])
-def test_sparse_evidence_requires_explicit_insufficiency_and_short_prose(payload, physiology):
-    payload.update(transcript=None, transcript_reliability="unavailable", tone=None, events=[], keywords={})
-    if not physiology: payload.update(hr=None, hrv=None)
-    facts = prepare_signals(InterpretationInput.model_validate(payload))
-    def issues(text):
-        return draft_issues(SignalDraft.model_validate({"sentences": [{"text": text, "evidence_ids": ["STATE"]}]}), facts)
-    assert any("not enough reliable information" in i for i in issues("The supplied distress label is supported."))
-    assert not issues("There is not enough reliable information to explain the supplied distress state.")
-    assert any("at most 45 words" in i for i in issues("There is not enough reliable information to explain distress. " + "Further context remains unavailable. " * 15))
 
 
 def test_plain_language_revision_preserves_audio_and_returns_model_limitation(payload, monkeypatch):
@@ -536,24 +498,8 @@ def test_plain_language_revision_preserves_audio_and_returns_model_limitation(pa
     assert "Revision requirements" in requests[2]["messages"][0]["content"]
 
 
-def test_sparse_model_story_revised_to_insufficient_information(payload, monkeypatch):
-    payload.update(transcript=None, transcript_reliability="unavailable", tone=None, events=[], keywords={})
-    expected = "There is not enough reliable information to explain the supplied distress state. Heart measurements alone cannot establish its cause."
-    requests = install_transport(monkeypatch, [choice("The heart measurements confirm distress.", ["STATE", "HR", "HRV"]), choice(expected, ["STATE", "HR", "HRV"])])
-    result = SignalInterpreter(backend=LlamaBackend()).interpret(payload)
-    assert len(requests) == 2 and result["distress_interpretation"] == expected
-    assert result["sections"]["audio"]["status"] == "not_available"
-    assert result["sections"]["distress"]["attempts"] == 2
 
 
-def test_unreliable_transcript_alone_is_not_usable_audio(payload, monkeypatch):
-    payload.update(transcript="Help me.", transcript_reliability="unreliable", tone=None, events=[], keywords={})
-    expected = "There is not enough reliable information to explain the supplied distress state. The transcript is unreliable."
-    requests = install_transport(monkeypatch, [choice(expected)])
-    result = SignalInterpreter(backend=LlamaBackend()).interpret(payload)
-    assert len(requests) == 1 and result["audio_interpretation"] is None
-    assert result["sections"]["audio"]["reason"] == "no_usable_audio_evidence"
-    assert result["distress_interpretation"] == expected
 
 
 @pytest.mark.parametrize("role,at,has_context", [
@@ -567,25 +513,54 @@ def test_only_current_user_chat_counts_as_situational_context(payload, role, at,
     assert has_contextual_evidence(prepare_signals(InterpretationInput.model_validate(payload))) is has_context
 
 
-@pytest.mark.parametrize("text", [
-    "The heart rate was higher than usual. There is not enough reliable information to explain distress.",
-    "There is not enough reliable information to explain distress. Heart changes may suggest emotional tension.",
-    "There is not enough reliable information to explain distress. More context is needed. The cause is unclear.",
-])
-def test_sparse_explanation_cannot_bury_limit_or_pad_it_with_speculation(payload, text):
+
+
+
+
+
+@pytest.mark.parametrize("kind", ["physiology", "state", "keywords", "unreliable-transcript", "zero-confidence"])
+def test_insufficient_context_is_a_data_status_without_inference(payload, monkeypatch, kind):
     payload.update(transcript=None, transcript_reliability="unavailable", tone=None, events=[], keywords={})
-    facts = prepare_signals(InterpretationInput.model_validate(payload))
-    draft = SignalDraft.model_validate({"sentences": [{"text": text, "evidence_ids": ["STATE", "HR", "HRV"]}]})
-    assert draft_issues(draft, facts)
+    if kind == "state": payload.update(hr=None, hrv=None)
+    if kind == "keywords": payload.update(hr=None, hrv=None, keywords={"distress": ["help me"]})
+    if kind == "unreliable-transcript": payload.update(transcript="Help me.", transcript_reliability="unreliable")
+    if kind == "zero-confidence": payload.update(tone={"label": "frightened", "confidence": 0}, events=[{"label": "barking", "confidence": 0}])
+    requests = install_transport(monkeypatch, [choice()])
+    backend = LlamaBackend()
+    backend._lock.acquire()
+    try: result = SignalInterpreter(backend=backend).interpret(payload)
+    finally: backend._lock.release()
+    assert not requests and result["audio_interpretation"] is None and result["distress_interpretation"] is None
+    assert result["sections"]["distress"] == {"status": "not_available", "reason": "insufficient_context", "attempts": 0, "diagnostics": []}
+    assert result["sections"]["audio"]["status"] == "not_available"
 
 
-
-def test_limited_evidence_request_does_not_invite_a_measurement_story(payload, monkeypatch):
+def test_api_returns_no_data_status_as_success_not_backend_failure(payload, monkeypatch):
+    import wualt_slm.incident_api as api
     payload.update(transcript=None, transcript_reliability="unavailable", tone=None, events=[], keywords={})
-    requests = install_transport(monkeypatch, [choice("There is not enough reliable information to explain the supplied distress state.", ["STATE"])])
+    requests = install_transport(monkeypatch, [choice()])
+    monkeypatch.setattr(api, "backend", LlamaBackend()); monkeypatch.delenv("WUALT_API_KEY", raising=False)
+    with TestClient(api.app) as client:
+        response = client.post("/v1/interpretations", json=payload)
+    assert response.status_code == 200 and not requests
+    assert response.json()["sections"]["distress"]["reason"] == "insufficient_context"
+
+
+def test_report_shows_plain_insufficient_data_notice(payload, monkeypatch, tmp_path):
+    import runpy
+    payload.update(transcript=None, transcript_reliability="unavailable", tone=None, events=[], keywords={})
     result = SignalInterpreter(backend=LlamaBackend()).interpret(payload)
-    assert result["sections"]["distress"]["status"] == "generated"
-    evidence = json.loads(requests[0]["messages"][1]["content"])["evidence"]
-    assert {f["id"] for f in evidence} == {"STATE", "TRANSCRIPT", "HR", "HRV"}
-    assert "comparison_direction" not in json.dumps(evidence) and "rmssd" not in json.dumps(evidence)
-    assert "at most TWO sentences and 45 words" in requests[0]["messages"][0]["content"]
+    evaluate = runpy.run_path(str(Path(__file__).parents[1]/"scripts/evaluate_signal_interpretations.py"))
+    target = tmp_path/"report.html"
+    evaluate["save_html"]([{"scenario":"physiology-only","input":payload,"review_focus":"Review.","output":result}],target)
+    content = target.read_text(encoding="utf-8")
+    assert "There is not enough reliable information to explain the supplied state." in content
+    assert "Neither interpretation was returned" not in content
+
+
+def test_current_user_context_still_runs_model_when_audio_is_absent(payload, monkeypatch):
+    payload.update(transcript=None, transcript_reliability="unavailable", tone=None, events=[], keywords={}, chat_context=[{"role":"user","at":"2026-10-26T11:29:30+05:30","text":"I am afraid of the dog."}])
+    expected = "The current message expresses fear of a dog, which supports the supplied distress label."
+    requests = install_transport(monkeypatch, [choice(expected, ["STATE", "CHAT1"])])
+    result = SignalInterpreter(backend=LlamaBackend()).interpret(payload)
+    assert len(requests) == 1 and result["distress_interpretation"] == expected

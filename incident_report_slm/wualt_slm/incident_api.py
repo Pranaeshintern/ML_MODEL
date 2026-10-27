@@ -136,7 +136,7 @@ def interpret_signals(data: InterpretationInput):
     try:
         try:
             result = SignalInterpreter(backend=backend).interpret(data)
-            if not any(result[name] is not None for name in ("audio_interpretation", "distress_interpretation")):
+            if not any(result[name] is not None for name in ("audio_interpretation", "distress_interpretation")) and any(section["status"] == "failed" for section in result["sections"].values()):
                 return JSONResponse(result, status_code=502)
             return result
         except BackendUnavailable as exc:

@@ -4,12 +4,12 @@ The backend sends a compact JSON snapshot. The model explains what the supplied 
 
 ## Architecture
 
-Backend signals ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ validate JSON and timing ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ two isolated model calls ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ check each paragraph ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ return both interpretations.
+Backend signals ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ validate JSON and timing ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ two isolated model calls ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ check each paragraph ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¾Ãƒâ€šÃ‚Â¢ return both interpretations.
 
 1. **Audio interpretation:** receives only transcript, tone and sound-event labels, with their reliability/confidence and speaker-attribution metadata. No supplied state, keywords, HR/HRV, activity, chat, location or snapshot/window timing is sent to this call. It explains what the audio observations suggest.
 2. **Distress explanation:** receives the validated backend evidence. It explains which observations support or conflict with the supplied state, and what remains uncertain. Keywords are derived hints, not independent corroboration. HR/HRV provide supporting context only. It does not claim to know the upstream classifier's internal reasoning or establish an unobserved cause.
 
-The calls are independent: the distress call uses original evidence, not the generated audio paragraph. A failed section does not discard a valid section. If no usable audio observations are supplied, the audio model call is skipped and its status is `not_available`; the distress call still runs. This status is a data-availability notice, not fallback interpretation prose.
+The calls are independent: the distress call uses original evidence, not the generated audio paragraph. A failed section does not discard a valid section. If no usable audio observations are supplied, the audio model call is skipped and its status is `not_available`; the distress call still runs when usable supporting context exists. With no situational context, it returns an insufficient-data status. This status is a data-availability notice, not fallback interpretation prose.
 
 The wrapper consumes already-produced transcript, tone labels, sound-event labels and a normal/stress/distress classification. It does not transcribe audio, detect sounds or train a classifier. The supplied state is context to assess, not ground truth to repeat. HR and HRV support the explanation; values alone do not establish distress, cause or a diagnosis.
 
@@ -46,14 +46,15 @@ The distress prompt relates the transcript, tone and sound events to the supplie
 
 Interpretation prose uses everyday language: no HR/HRV acronyms or RMSSD/SDNN metric names. Technical metric identifiers remain in the validated input, but are not sent as measurement names to the model. Heart comparisons are mentioned only when they help explain the case.
 
-When evidence is inadequate, the model should state that there is not enough reliable information to assess or explain the supplied state, usually in one or two sentences. State-only and physiology-only cases use a short dedicated model prompt with evidence availability and quality, without measurement directions or raw keyword text. They must lead with that explicit limitation and stay within two sentences and 45 words. A non-technical limitation is a valid model result; a service/validation failure still has a null result and failure metadata. A transcript marked unreliable cannot by itself make audio available. Presence of context is not proof of its sufficiency: assessing relevance, negation, tense and alternative explanations still requires model and manual review.
+When evidence is inadequate, explain the limitation in plain language. If usable audio and current user/activity context are absent (including state-only, physiology-only and keywords-only inputs), both interpretation strings are null and the report displays explicit data-availability notices. The distress reason is `insufficient_context`: "There is not enough reliable information to explain the supplied state." This result needs no model call and is not generated prose or a fallback. Technical model failures remain separate and are never mislabeled as missing data. An unreliable transcript alone does not count as usable audio. Presence of context does not prove sufficiency: the model must still assess relevance, negation, tense and alternative explanations.
+
 
 The response keeps the two interpretation keys and adds `sections` metadata. Text is non-null only when that section was generated and passed validation. For example, a physiology-only request can return:
 
 ```json
 {
   "audio_interpretation": null,
-  "distress_interpretation": "There is not enough reliable information to explain the supplied distress state. Heart measurements alone cannot establish the emotional state or its cause.",
+  "distress_interpretation": null,
   "sections": {
     "audio": {
       "status": "not_available",
@@ -62,22 +63,22 @@ The response keeps the two interpretation keys and adds `sections` metadata. Tex
       "diagnostics": []
     },
     "distress": {
-      "status": "generated",
-      "reason": null,
-      "attempts": 1,
+      "status": "not_available",
+      "reason": "insufficient_context",
+      "attempts": 0,
       "diagnostics": []
     }
   }
 }
 ```
 
-Section status is `generated`, `not_available` (audio only) or `failed`. Missing or wholly unusable audio gets no model-generated text; the UI displays a clearly labeled availability notice. A transcript is not required if usable tone or sound-event evidence exists.
+Section status is `generated`, `not_available` (insufficient usable data) or `failed`. Missing or wholly unusable audio gets no model-generated text; the UI displays a clearly labeled availability notice. A transcript is not required if usable tone or sound-event evidence exists.
 
 Each model call allows one bounded revision. Rejected output stays null; **fallback remains disabled**. The other section continues independently. No guards are disabled to make a failed paragraph appear successful. Rejected attempts record their specific validator messages in `diagnostics` and server warning logs, including when a later revision succeeds. These diagnostics never include raw input, rejected model prose, request IDs, exception strings or credentials. They identify which check failed; they do not establish semantic accuracy.
 
-HTTP 200 means at least one section was generated; callers must inspect both section statuses. If neither section was generated, HTTP 502 retains the structured section results and diagnostics. Invalid inputs still return 422 and model-busy responses return 503. Unexpected backend-level failures may return the existing 502 detail response.
+HTTP 200 means a generated result or an explicit data-availability result; callers must inspect both section statuses. If neither section was generated and a model section failed, HTTP 502 retains the structured section results and diagnostics. Invalid inputs still return 422 and model-busy responses return 503. Unexpected backend-level failures may return the existing 502 detail response.
 
-Most requests make two model calls; requests without usable audio make only the distress call. Legacy report APIs are unchanged. Input fields are not echoed into interpretation prose or the API response.
+Most requests make two model calls; requests without usable audio can make only the distress call when context exists, or no model call when data is insufficient. Legacy report APIs are unchanged. Input fields are not echoed into interpretation prose or the API response.
 
 ## Run
 
@@ -108,7 +109,7 @@ curl -X POST http://127.0.0.1:8000/v1/interpretations \
 wualt-slm interpret wualt_slm/assets/examples/interpretation-v1.json --output /workspace/review/interpretation.json
 ```
 
-`GET /v1/interpretation-input-example` returns the example; `/openapi.json` contains the full contract. The API returns 422 for invalid input, 502 when no section could be generated and 503 with Retry-After when busy. It does not dispatch assistance.
+`GET /v1/interpretation-input-example` returns the example; `/openapi.json` contains the full contract. The API returns 422 for invalid input, 502 when no section could be generated because of a model failure and 503 with Retry-After when busy. It does not dispatch assistance.
 
 Python:
 
@@ -120,6 +121,8 @@ print(result["distress_interpretation"])
 ```
 
 ## Compatibility and verification
+
+**v0.15 response change:** `sections.distress` may be `not_available` with reason `insufficient_context` and zero attempts. HTTP 200 can return both sections as unavailable when usable context is absent; render the data-availability notices. Input JSON is unchanged.
 
 **v0.14 response change:** Each interpretation string is now nullable and the required `sections.audio` / `sections.distress` metadata explains missing or failed output. HTTP 200 can contain one generated section; inspect statuses instead of assuming both are present.
 

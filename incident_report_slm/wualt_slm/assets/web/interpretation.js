@@ -10,6 +10,7 @@ $("connect").addEventListener("click",connect);
 $("example").addEventListener("click",example);
 const sectionNames=["audio","distress"];
 const sectionMessages={
+  insufficient_context:"There is not enough reliable information to explain the supplied state.",
   no_audio_evidence:"Not enough audio data to provide an interpretation. No transcript, tone or sound events were supplied.",
   no_usable_audio_evidence:"Not enough reliable audio data to provide an interpretation.",
   grounding_failed:"The generated paragraph failed validation and was not returned.",
@@ -31,7 +32,7 @@ $("generate").addEventListener("click",async()=>{
   $("interpretations").hidden=true;
   for(const name of sectionNames){$(name+"-interpretation").textContent="";$(name+"-interpretation").hidden=true;$(name+"-status").textContent="";$(name+"-status").hidden=true;}
   $("copy").disabled=true;$("empty").hidden=false;
-  $("status").textContent="Generating audio interpretation and distress explanationâ€¦";
+  $("status").textContent="Generating audio interpretation and distress explanationÃ¢â‚¬Â¦";
   try{
     const input=JSON.parse($("payload").value);
     const result=await request("/v1/interpretations",{method:"POST",body:JSON.stringify(input)});
@@ -42,8 +43,8 @@ $("generate").addEventListener("click",async()=>{
       if(state.status==="generated"){$(name+"-interpretation").textContent=result[name+"_interpretation"];$(name+"-interpretation").hidden=false;generated++;}
       else{$(name+"-status").textContent=(state.status==="not_available"?"Unavailable: ":"Generation failed: ")+sectionMessages[state.reason];$(name+"-status").hidden=false;}
     }
-    $("interpretations").hidden=false;$("empty").hidden=true;$("copy").disabled=generated===0;
-    $("status").textContent=generated===2?"Both interpretations are ready for review.":generated===1?"One interpretation is ready. The other section's status is shown separately.":"No interpretation was generated. Section statuses are shown below; no fallback was substituted.";
+    $("interpretations").hidden=false;$("empty").hidden=true;const noData=sectionNames.every(name=>result.sections[name].status==="not_available");$("copy").disabled=generated===0&&!noData;
+    $("status").textContent=generated===2?"Both interpretations are ready for review.":generated===1?"One interpretation is ready. The other section's status is shown separately.":noData?"Not enough reliable data for an interpretation. See the section details below.":"No interpretation was generated. Section statuses are shown below; no fallback was substituted.";
   }catch(error){fail(error.message);$("status").textContent="The interpretation request could not be completed.";}
   finally{busy=false;$("generate").disabled=false;}
 });

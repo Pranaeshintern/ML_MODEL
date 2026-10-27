@@ -105,7 +105,7 @@ class AttemptDiagnostic(StrictModel):
 
 class SectionStatus(StrictModel):
     status: Literal["generated", "not_available", "failed"]
-    reason: Literal["no_audio_evidence", "no_usable_audio_evidence", "grounding_failed", "generation_incomplete", "invalid_model_response", "model_unavailable"] | None = None
+    reason: Literal["no_audio_evidence", "no_usable_audio_evidence", "insufficient_context", "grounding_failed", "generation_incomplete", "invalid_model_response", "model_unavailable"] | None = None
     attempts: int = Field(strict=True, ge=0, le=2)
     diagnostics: list[AttemptDiagnostic] = Field(default_factory=list, max_length=2)
 
@@ -113,8 +113,8 @@ class SectionStatus(StrictModel):
     def coherent(self):
         if self.status == "generated" and (self.reason is not None or self.attempts == 0):
             raise ValueError("Generated sections require a model attempt and no failure reason")
-        if self.status == "not_available" and (self.reason not in ("no_audio_evidence", "no_usable_audio_evidence") or self.attempts or self.diagnostics):
-            raise ValueError("Unavailable audio is a data status, not a model generation")
+        if self.status == "not_available" and (self.reason not in ("no_audio_evidence", "no_usable_audio_evidence", "insufficient_context") or self.attempts or self.diagnostics):
+            raise ValueError("Unavailable evidence is a data status, not a model generation")
         if self.status == "failed" and (self.reason not in ("grounding_failed", "generation_incomplete", "invalid_model_response", "model_unavailable") or self.attempts == 0):
             raise ValueError("Failed sections require a failure reason and an attempt")
         attempts = [item.attempt for item in self.diagnostics]
@@ -142,6 +142,8 @@ class InterpretationResponse(StrictModel):
             section = getattr(self.sections, name)
             if (text is not None) != (section.status == "generated"):
                 raise ValueError("Only a generated section can contain interpretation prose")
-        if self.sections.distress.status == "not_available":
-            raise ValueError("The supplied state is always available to the distress call")
+        if self.sections.audio.reason == "insufficient_context":
+            raise ValueError("Audio unavailability requires an audio-specific reason")
+        if self.sections.distress.status == "not_available" and self.sections.distress.reason != "insufficient_context":
+            raise ValueError("Distress unavailability requires insufficient situational context")
         return self
