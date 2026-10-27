@@ -178,8 +178,9 @@ def draft_issues(draft: SignalDraft, facts: list[dict], *, section="distress") -
     observation_text = " ".join(str(f["data"].get("text") or "") for f in facts if f["id"] == "TRANSCRIPT" or re.fullmatch(r"CHAT\d+", f["id"]))
     jargon = re.findall(r"(?i)\b(?:backend|classifier|ground truth|physiological arousal)\b", text)
     scores = re.search(r"(?i)\bconfidence(?: level| score)\b|\b\d+(?:\.\d+)?\s*%|\bconfidence\s*(?:of|is|was|:)?\s*\d+(?:\.\d+)?", text)
-    if scores or any(term.lower() not in observation_text.lower() for term in jargon):
-        issues.append("Use everyday wording about the observations and their meaning. Delete every numeric confidence value, including decimals and percentages, from the candidate. Remove backend/classifier terminology, ground truth and physiological arousal. Do not replace the explanation with classification metadata.")
+    state_confidence = re.search(r"(?i)\b(?:label|state|classification)\s+(?:has|had|carries|comes with)\s+(?:a |some |high |low |unknown )?confidence\b", text)
+    if scores or state_confidence or any(term.lower() not in observation_text.lower() for term in jargon):
+        issues.append("Use everyday wording about the observations and their meaning. Remove the entire clause about the supplied state confidence, not just its digits; do not leave a fragment such as has a confidence. Omit numeric confidence scores including decimals and percentages. Ordinary sound-detection uncertainty may remain. Remove backend/classifier terminology, ground truth and physiological arousal. Do not replace the explanation with classification metadata.")
     if re.search(r"(?i)\b(?:within|in) (?:the )?normal (?:limits|range)\b|\b(?:heart rate|heart rate variability|measurements|readings)\s+(?:is|are|were|was)\s+(?:medically )?(?:normal|healthy|safe)\b", text) and not re.search(r"(?i)normal (?:limits|range)|medically normal", observation_text):
         issues.append("No clinical normal range was supplied. Matching the reference means unchanged from the reference, not medically normal or safe. Remove the clinical claim; use only the permitted comparison when useful.")
     issues.extend(review_grounding_issues(draft, available, section))

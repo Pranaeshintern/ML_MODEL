@@ -106,3 +106,8 @@ def test_conclusion_can_cite_already_qualified_detection_without_repeating_it():
         {"text":"The observations are insufficient to confirm stress because the event details remain uncertain.","evidence_ids":["STATE","EVENT1"]},
     ]})
     assert not draft_issues(draft,facts)
+
+
+def test_score_repair_cannot_leave_a_meaningless_confidence_fragment():
+    issues=check("dizzy-after-standing", "The person reports dizziness. The provided stress label has a confidence, but the observations are limited.", ["STATE","TRANSCRIPT"])
+    assert any("entire clause" in issue for issue in issues)
