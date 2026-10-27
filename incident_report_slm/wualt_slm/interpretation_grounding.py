@@ -46,11 +46,31 @@ def affirmative_matches(pattern, text):
         after = text[match.end():match.end()+65]
         if re.search(r"(?:\bno|\bnot|\bwithout)\s+(?:(?:a|an|any|confirmed|reported|physical|clear|evidence|of|signs|a diagnosis)\s+){0,5}$", before, re.I):
             continue
-        if re.search(r"(?:does not|doesn't|cannot|can't|do not|did not)\s+(?:confirm|establish|prove|show|indicate|support|imply)\s+(?:(?:a|an|any|the|physical|confirmed)\s+){0,3}$", before, re.I):
+        # A negated verb may be followed by ordinary describing words ("a wrist", "a serious"),
+        # but not by a new clause ("and has an").
+        if re.search(r"(?:does not|doesn't|cannot|can't|do not|did not|is not|isn't|not)\s+(?:(?:yet|necessarily|clearly|by itself|alone)\s+)?(?:confirm|establish|prove|show|indicate|support|imply|suggest|mean|point to)\s+(?:(?!(?:and|but|or|has|have|had|is|was|are|were|with|which|that)\b)[\w'-]+\s+){0,3}$", before, re.I):
             continue
         if re.match(r"\s+(?:is|are|was|were)\s+(?:not|unconfirmed)|\s+(?:cannot|can't) be (?:confirmed|established)", after, re.I):
             continue
         yield match
+
+
+ENGLISH_WORDS = r"\b(?:i|i'm|i am|me|my|the|a|an|is|am|are|was|were|and|but|to|of|in|on|it|you|not|no|please|help|can|this|that|have|has)\b"
+
+
+def english_like(text):
+    """Heuristic: the English-language checks can only read English observations.
+
+    Non-Latin scripts and romanized Hindi/Tamil ("Mujhe darr lag raha", "Enakku romba
+    tension") are treated as non-English, so English word patterns are not applied to them.
+    """
+    letters = re.findall(r"[^\W\d_]", text or "")
+    if not letters:
+        return True
+    latin = sum(ch.isascii() for ch in letters) / len(letters)
+    words = re.findall(r"[\w']+", (text or "").lower())
+    english = len(re.findall(ENGLISH_WORDS, (text or "").lower()))
+    return latin >= 0.9 and bool(words) and english / len(words) >= 0.2
 
 
 def current_user_chat(available):
@@ -85,6 +105,9 @@ def review_grounding_issues(draft, available, section):
     cited = {key for s in draft.sentences for key in s.evidence_ids}
     observation_text = " ".join([speech] + [item["text"] for item in chats.values()])
     has_injury_account = bool(list(affirmative_matches(INJURY, observation_text)))
+    # The injury check cannot read non-English observations. There, an injury may appear
+    # only as the person's attributed account, never as an established fact.
+    english_observations = english_like(observation_text)
     # Crying/tears and an upstream distress label alone cannot contradict explicit joy.
     explicit_joy = re.search(r"\b(?:happy|happiness|joy|joyful|delighted)\b", speech, re.I)
     contrary_affect = re.search(r"\b(?:sad|sadness|afraid|scared|frightened|unsafe|angry|upset|worried|grief|anxious|mixed|bittersweet)\b", observation_text, re.I)
@@ -111,8 +134,12 @@ def review_grounding_issues(draft, available, section):
             issues.append("The transcript says the " + actor + " is calling for help, not the person. Attribute the shout or request to the " + actor + "; do not say the person is shouting or asking for help.")
         if section == "distress" and resolved and re.search(FEAR, text, re.I) and label_support(text, negated=False):
             issues.append("Past fear is not current distress. Do not treat the fear word, an extracted keyword or the label as support for current distress when the person describes the fear as past and says they are okay or calm now.")
-        if not has_injury_account and list(affirmative_matches(INJURY, text)):
-            issues.append("The observations report pain or an event, not a confirmed injury. Describe the reported symptom or event without upgrading it to an injury.")
+        injuries = [] if has_injury_account else list(affirmative_matches(INJURY, text))
+        if injuries and not english_observations:
+            injuries = [m for m in injuries if not re.search(REPORTING, text[:m.start()], re.I)]
+        if injuries:
+            issues.append("The observations report pain or an event, not a confirmed injury. Describe the reported symptom or event without upgrading it to an injury."
+                          + ("" if english_observations else " If the original-language speech reports an injury, attribute it to the person (says/reports) instead of stating it as fact."))
         # Known external-event assertions require account attribution, even for a verified identity.
         external = re.search(r"\b(?:is|are|was|were) (?:being )?(?:followed|chased|threatened|trapped|attacked)\b|\b(?:person|speaker|father|mother|friend|child) (?:fell|slipped|crashed)\b", text, re.I)
         if "TRANSCRIPT" in ids and external and not re.search(REPORTING, text[:external.start()], re.I):
