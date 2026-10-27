@@ -1,4 +1,4 @@
-# WUALT interpretation API — 0.20.1
+# WUALT interpretation API — 0.20.2
 
 See [the deployment guide](../DEPLOYMENT.md) for model download and startup commands.
 
@@ -7,6 +7,8 @@ The wrapper accepts backend JSON and uses Qwen3-14B to return two independent pa
 2. `distress_interpretation`: original validated evidence, the supplied state and supporting context, including usable heart comparisons/current user chat.
 
 The backend owns the full report layout. This package does not transcribe audio, detect sounds, train weights, save reports or dispatch assistance.
+
+**0.20.2:** when a paragraph is rejected, the rewrite request names the exact wording to change. A rewrite that repeats the rejected draft is asked for once more without that draft, still within the two attempts reported in `attempts`. These named words are never returned in `diagnostics`. Negated wording such as "do not indicate a trend" is no longer rejected. The request and response contract is unchanged.
 
 **0.20.1:** paragraphs no longer say a normal state is unsupported when their reasons describe a calm person, no longer describe tone or detections as high-confidence, and contain only English, with no original-script or copied original-language words. The request and response contract is unchanged.
 

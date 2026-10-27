@@ -2,7 +2,7 @@
 
 **Backend handoff — 27 October 2026**
 
-Wrapper 0.20.1 · branch `deploy/slm` · Qwen3-14B Q8_0 · llama.cpp b11582
+Wrapper 0.20.2 · branch `deploy/slm` · Qwen3-14B Q8_0 · llama.cpp b11582
 
 ## Architecture
 
@@ -198,11 +198,11 @@ The Dockerfile installs the Python wrapper only. It does not download weights or
 
 ~~~bash
 cd /opt/wualt/source/incident_report_slm
-sudo docker build -t wualt-wrapper:0.20.1 .
+sudo docker build -t wualt-wrapper:0.20.2 .
 # Stop the systemd wrapper first if port 8000 is in use.
 sudo docker run --rm --name wualt-wrapper --network host \
   --env-file /etc/wualt/wrapper.env \
-  wualt-wrapper:0.20.1 wualt-slm serve --host 127.0.0.1 --port 8000
+  wualt-wrapper:0.20.2 wualt-slm serve --host 127.0.0.1 --port 8000
 ~~~
 
 This uses Linux host networking. In a bridged network, localhost means the container; use a private model-service hostname instead. Configure restart/readiness policies in your orchestrator.

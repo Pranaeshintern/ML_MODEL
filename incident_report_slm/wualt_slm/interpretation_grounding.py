@@ -1,4 +1,5 @@
 """Targeted semantic diagnostics; these are not a general truth verifier."""
+import json
 import re
 
 CURRENT_TIMES = {"Within the supplied observation window", "At the snapshot time"}
@@ -117,6 +118,66 @@ def copied_original_words(text, available):
     return False
 
 
+def heart_trends(text):
+    """Trend wording, excluding negations such as 'do not indicate a trend'."""
+    return [m for m in re.finditer(HEART_TREND, text, re.I)
+            if not re.search(r"\b(?:not|no|never|without|nor)\b(?:\s+[\w'-]+){0,3}\s*$", text[max(0, m.start()-40):m.start()], re.I)]
+
+
+def _phrase(text, match, before=2):
+    """The matched words plus a few preceding words, e.g. 'a wrist injury'."""
+    head = re.findall(r"[\w'-]+", text[:match.start()])[-before:] if before else []
+    return " ".join(head + [match.group(0).strip()]).strip(" ,.;:")
+
+
+def revision_hints(draft, available, section):
+    """Name the exact wording a rejected draft must change.
+
+    Used only in the revision request sent to the model. These hints quote model prose and
+    input words, so they are never stored in diagnostics or returned by the API.
+    """
+    hints = []
+    text = " ".join(s.text for s in draft.sentences)
+    speech = available.get("TRANSCRIPT", {}).get("text") or ""
+    chats = current_user_chat(available)
+    observation = " ".join([speech] + [item["text"] for item in chats.values()])
+    def add(phrase, instruction):
+        phrase = phrase.strip(" ,.;:")
+        if phrase:
+            hints.append("Replace " + json.dumps(phrase, ensure_ascii=False) + ": " + instruction)
+    if not list(affirmative_matches(INJURY, observation)):
+        for m in affirmative_matches(INJURY, text):
+            add(_phrase(text, m), "the person reported pain or an event, not an injury; describe the pain instead.")
+    for m in re.finditer(CONFIDENCE_WORDS, text, re.I):
+        add(_phrase(text, m, 1), "describe the tone or sound itself without a confidence level.")
+    for word in re.findall(r"\S*[^\x00-ɏ\s]\S*", text):
+        # Whole non-Latin words: combining vowel signs are not word characters.
+        add(word.strip("'\"()[]‘’“”.,;:!?"), "give its English meaning instead.")
+    if not english_like(observation):
+        for quoted in re.findall(QUOTED, text):
+            phrase = quoted.strip(" .,!?;:")
+            if phrase and not english_like(phrase):
+                add(phrase, "give its English meaning instead of the original-language word.")
+    if re.search(r"\bnearby\b", text, re.I) and not re.search(r"\bnearby\b", json.dumps(available), re.I):
+        add("nearby", "sound detection gives no distance; say the sound was detected.")
+    for sentence in draft.sentences:
+        if set(sentence.evidence_ids) & {"HR", "HRV"} and re.search(HEART, sentence.text, re.I):
+            for m in heart_trends(sentence.text):
+                add(_phrase(sentence.text, m, 1), "a heart reading is one comparison with a reference, not a trend.")
+    if section == "distress" and resolved_past_fear(available):
+        for m in label_support(text, negated=False):
+            add(_phrase(text, m, 2) + text[m.end():m.end()+40].split(".")[0], "past fear does not support current distress; say the current account does not clearly support it.")
+    if section == "distress" and available.get("STATE", {}).get("label") == "normal":
+        for sentence in draft.sentences:
+            if inverted_normal(sentence.text):
+                for m in label_support(sentence.text, negated=True):
+                    add(_phrase(sentence.text, m, 3) + sentence.text[m.end():m.end()+25].split(",")[0], "the reasons describe a calm person; say the observations are consistent with the normal state.")
+    if speech and available.get("TRANSCRIPT", {}).get("reliability") == "usable":
+        for m in re.finditer(RELIABILITY_DOUBT, text, re.I):
+            add(m.group(0), "the transcript is marked usable; remove this caveat.")
+    return list(dict.fromkeys(hints))
+
+
 def attributed_actor(speech):
     """The actor (e.g. a game character) the speech says is calling out, if any."""
     match = re.search(ACTOR + r"[^.!?]{0,60}" + CALL, speech or "", re.I)
@@ -173,7 +234,7 @@ def review_grounding_issues(draft, available, section):
         ids = set(sentence.evidence_ids)
         if section == "distress" and state == "normal" and inverted_normal(text):
             issues.append("This sentence says the observations do not support the normal state, but its reasons describe a calm or non-distressed person. If the observations fit the normal state, say they are consistent with it.")
-        if ids & {"HR", "HRV"} and re.search(HEART, text, re.I) and re.search(HEART_TREND, text, re.I):
+        if ids & {"HR", "HRV"} and re.search(HEART, text, re.I) and heart_trends(text):
             issues.append("Each heart reading is one measurement compared with one reference. Do not describe readings as remaining, staying steady or consistent, or rising or falling over the window; state only the supplied comparison.")
         if actor and "TRANSCRIPT" in ids and re.search(CALL + r"[^.;]{0,25}\bhelp\b|\bhelp\b[^.;]{0,25}" + CALL, text, re.I) and actor not in text.lower():
             issues.append("The transcript says the " + actor + " is calling for help, not the person. Attribute the shout or request to the " + actor + "; do not say the person is shouting or asking for help.")
