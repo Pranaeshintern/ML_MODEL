@@ -175,10 +175,13 @@ def draft_issues(draft: SignalDraft, facts: list[dict], *, section="distress") -
     if re.search(r"(?i)\b(?:HRV|HR|RMSSD|SDNN)\b|root[ -]mean[ -]squar\w*|standard deviation of (?:normal|NN)|successive (?:RR|NN|heartbeat) (?:interval )?differences", text):
         issues.append("Use plain language: omit physiological acronyms and metric names. Say heart rate or variation between heartbeats only when useful.")
     if section == "distress" and not has_contextual_evidence(facts):
-        if not re.search(r"(?i)\b(?:not enough|insufficient|no reliable)\b.{0,55}\b(?:data|information|evidence)\b|\b(?:cannot|can't|can not)\s+(?:reliably\s+)?(?:be\s+)?(?:explain(?:ed)?|assess(?:ed)?|determine(?:d)?|establish(?:ed)?|confirm(?:ed)?)\b", text):
-            issues.append("There is no usable situational context. Clearly say there is not enough reliable information to assess or explain the supplied state; physiology alone cannot establish its cause.")
-        if len(text.split()) > 60:
-            issues.append("For insufficient situational evidence, use one or two short sentences and at most 60 words; remove repeated caveats.")
+        sentences = re.split(r"(?<=[.!?])\s+", text)
+        if not re.search(r"(?i)\b(?:not enough|insufficient|no reliable)\b.{0,55}\b(?:data|information|evidence)\b|\b(?:cannot|can't|can not)\s+(?:reliably\s+)?(?:be\s+)?(?:explain(?:ed)?|assess(?:ed)?|determine(?:d)?|establish(?:ed)?|confirm(?:ed)?)\b", sentences[0]):
+            issues.append("There is no usable situational context. Start the first sentence by saying there is not enough reliable information to assess or explain the supplied state; physiology alone cannot establish its cause.")
+        if len(text.split()) > 45 or len(sentences) > 2:
+            issues.append("For insufficient situational evidence, use one or two short sentences and at most 45 words; remove repeated caveats.")
+        if re.search(r"(?i)\b(?:higher|lower|above|below|arousal|tension)\b|consistent with (?:stress|distress)|may (?:suggest|indicate|reflect)", text):
+            issues.append("This case lacks situational context. Do not speculate from measurements or repeat their comparisons; give the insufficient-information conclusion and, if useful, one reason.")
     if len(text) > 1800: issues.append("Keep the entire interpretation under 1800 characters.")
     if len(text.split()) > 130: issues.append("Keep the entire paragraph at most 130 words; combine related facts and remove repeated caveats.")
     if not available["TRANSCRIPT"]["speaker_verified"] and re.search(r"(?i)\b(?:the )?wearer\s+(?:reports|says|states|asks|denies|requests)\b", text):
@@ -254,7 +257,7 @@ def _generate_section(backend, client, facts, section):
             if audio_availability(facts):
                 prompt += "\nNo usable audio observations are supplied. Interpret any usable physiological comparisons and other actual evidence without requiring speech or inventing an incident. Do not infer a cause or an emotional state from physiology alone. Do not cite tone, events or keywords that are absent."
             if not has_contextual_evidence(facts):
-                prompt += "\nThere is no usable situational context. Explicitly say there is not enough reliable information to assess or explain the supplied state. You may briefly describe an allowed heart comparison, but it cannot establish emotion or cause. Use one or two short sentences, at most 60 words."
+                prompt += "\nThere is no usable situational context. Start immediately by saying there is not enough reliable information to assess or explain the supplied state. Add at most one brief reason, such as heart measurements alone cannot explain the emotional state or its cause, or extracted keywords lack original observations. Omit measurement comparisons, speculation about tension or arousal, and repeated caveats. Use one or two short sentences, at most 45 words."
         if issues:
             prompt += "\nRevision requirements: " + json.dumps(issues)
         schema = SignalDraft.model_json_schema()

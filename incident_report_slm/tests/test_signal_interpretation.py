@@ -523,7 +523,7 @@ def test_sparse_evidence_requires_explicit_insufficiency_and_short_prose(payload
         return draft_issues(SignalDraft.model_validate({"sentences": [{"text": text, "evidence_ids": ["STATE"]}]}), facts)
     assert any("not enough reliable information" in i for i in issues("The supplied distress label is supported."))
     assert not issues("There is not enough reliable information to explain the supplied distress state.")
-    assert any("at most 60 words" in i for i in issues("There is not enough reliable information to explain distress. " + "Further context remains unavailable. " * 15))
+    assert any("at most 45 words" in i for i in issues("There is not enough reliable information to explain distress. " + "Further context remains unavailable. " * 15))
 
 
 def test_plain_language_revision_preserves_audio_and_returns_model_limitation(payload, monkeypatch):
@@ -565,3 +565,15 @@ def test_only_current_user_chat_counts_as_situational_context(payload, role, at,
     from wualt_slm.signal_interpretation import has_contextual_evidence
     payload.update(transcript=None, transcript_reliability="unavailable", tone=None, events=[], keywords={"distress": ["help"]}, chat_context=[{"role": role, "at": at, "text": "I am afraid of the dog."}])
     assert has_contextual_evidence(prepare_signals(InterpretationInput.model_validate(payload))) is has_context
+
+
+@pytest.mark.parametrize("text", [
+    "The heart rate was higher than usual. There is not enough reliable information to explain distress.",
+    "There is not enough reliable information to explain distress. Heart changes may suggest emotional tension.",
+    "There is not enough reliable information to explain distress. More context is needed. The cause is unclear.",
+])
+def test_sparse_explanation_cannot_bury_limit_or_pad_it_with_speculation(payload, text):
+    payload.update(transcript=None, transcript_reliability="unavailable", tone=None, events=[], keywords={})
+    facts = prepare_signals(InterpretationInput.model_validate(payload))
+    draft = SignalDraft.model_validate({"sentences": [{"text": text, "evidence_ids": ["STATE", "HR", "HRV"]}]})
+    assert draft_issues(draft, facts)
