@@ -130,3 +130,55 @@ def test_chat_only_paragraph_can_establish_written_channel_once():
 ])
 def test_natural_sound_uncertainty_does_not_require_one_fixed_phrase(text):
     assert not check("uncertain-gunshot", text, ["TRANSCRIPT","EVENT1"], "audio")
+
+
+# v0.18.0 human review: four interpretations needed correction.
+
+def test_heart_comparisons_are_not_a_trend_across_the_window():
+    reviewed = "The person's heart rate and heart rate variability remained consistent during the observation window, and they were classified as walking, which aligns with normal activity."
+    assert any("one measurement compared with one reference" in i for i in check("walking-chat-context", reviewed, ["HR", "HRV", "ACTIVITY", "STATE"]))
+    faithful = "The person was classified as walking, and their heart rate and variation between heartbeats were unchanged from the earlier reference, which fits the normal state."
+    assert not check("walking-chat-context", faithful, ["HR", "HRV", "ACTIVITY", "STATE"])
+
+
+@pytest.mark.parametrize("section,ids", [("audio", ["TRANSCRIPT", "TONE"]), ("distress", ["TRANSCRIPT", "TONE", "STATE"])])
+def test_game_character_call_for_help_stays_with_the_character(section, ids):
+    reviewed = "A person is playing a game and shouting for help, but they clarify they are just playing, and the relaxed tone fits the normal state."
+    assert any("character is calling for help" in i for i in check("game-help-quote", reviewed, ids, section))
+    faithful = "The person says their game character is shouting help and that they are just playing, and the relaxed tone fits the normal state."
+    assert not check("game-help-quote", faithful, ids, section)
+
+
+def test_past_fear_does_not_support_current_distress():
+    facts = prepare_signals(InterpretationInput.model_validate(CASES["past-incident"]))
+    reviewed = SignalDraft.model_validate({"sentences": [
+        {"text": "The person reported being scared during a power cut last week but says they are okay today.", "evidence_ids": ["TRANSCRIPT"]},
+        {"text": "The transcript mentions scared, which aligns with the distress label, though the speaker is not verified.", "evidence_ids": ["TRANSCRIPT", "KEYWORDS", "STATE"]},
+    ]})
+    issues = draft_issues(reviewed, facts)
+    assert any("Past fear is not current distress" in i for i in issues)
+    assert any("does not clearly support the supplied distress" in i for i in issues)
+    faithful = SignalDraft.model_validate({"sentences": [
+        {"text": "The person says they were scared during a power cut last week and are okay today, so this account does not support current distress.", "evidence_ids": ["TRANSCRIPT", "STATE"]},
+        {"text": "Their heart rate was above the reference and the variation between heartbeats was below it, but these readings alone do not establish distress.", "evidence_ids": ["HR", "HRV", "STATE"]},
+    ]})
+    assert not draft_issues(faithful, facts)
+
+
+def test_usable_transcript_gets_no_reliability_caveat_and_calm_message_is_weighed():
+    facts = prepare_signals(InterpretationInput.model_validate(CASES["chat-recovery"]))
+    reviewed = SignalDraft.model_validate({"sentences": [
+        {"text": "In the audio, the person said they were frightened when the lights went out, but the transcript's reliability is not explicitly confirmed.", "evidence_ids": ["TRANSCRIPT"]},
+        {"text": "In a written message, the person wrote that the lights are back and they feel calm now, which may indicate a resolution.", "evidence_ids": ["CHAT1"]},
+        {"text": "The overall situation is assessed as distress based on the provided label.", "evidence_ids": ["STATE"]},
+    ]})
+    issues = draft_issues(reviewed, facts)
+    assert any("marked usable" in i for i in issues)
+    assert any("does not clearly support the supplied distress" in i for i in issues)
+    faithful = SignalDraft.model_validate({"sentences": [
+        {"text": "In the audio, the person said they were frightened when the lights went out.", "evidence_ids": ["TRANSCRIPT"]},
+        {"text": "In a written message, the person wrote that the lights are back and they feel calm now, so the current account does not clearly support the distress state.", "evidence_ids": ["CHAT1", "STATE"]},
+    ]})
+    assert not draft_issues(faithful, facts)
+    limited = check("chat-recovery", "In the audio, the person said they were frightened, though the transcript reliability is limited.", ["TRANSCRIPT"], "audio", transcript_reliability="limited")
+    assert not any("marked usable" in i for i in limited)

@@ -4,11 +4,13 @@ import logging
 import re
 from decimal import Decimal
 import httpx
-from .interpretation_grounding import review_grounding_issues, current_user_chat
+from .interpretation_grounding import review_grounding_issues, current_user_chat, attributed_actor, resolved_past_fear
 from .backend import BackendUnavailable, LlamaBackend, RUNTIME_LOCK
 from .signal_schema import InterpretationInput, InterpretationResponse, SignalDraft, SectionStatus, AttemptDiagnostic
 
-PROMPT_VERSION = "wualt-signals-v12-source-faithful"
+PROMPT_VERSION = "wualt-signals-v13-review-fixes"
+SHARED_REVIEW_RULES = """Keep who performs each described action: when speech says a game character, story figure or another person is shouting, calling or asking for help, say that this character or person does so, not the speaker. Past emotion is not current emotion: fear described as past (I was scared last week) is a memory, especially when the person now says they are okay or calm. When transcript reliability is usable, do not add any caveat about transcription reliability or accuracy; mention reliability only when it is limited, unreliable or unknown.
+"""
 LOGGER = logging.getLogger(__name__)
 DISTRESS_SYSTEM_PROMPT = """Write a concise distress explanation from the supplied evidence, normally 40-85 words in 2-3 sentences. Return only the JSON object required by the schema.
 Each sentence has natural-language text and an evidence_ids array. Put source IDs ONLY in that array, never in text, parentheses or headings. Include STATE in an evidence_ids array when assessing the supplied state. Include TRANSCRIPT when using supplied speech. Every cited ID must exist.
@@ -19,11 +21,12 @@ Explain speech in context: preserve denials, past tense, quotations and who is a
 Use only supplied tone and sound labels, with their uncertainty. Barking can contextualize a plea to keep a dog away, but does not prove an attack. A gunshot detector label does not prove a shooting. Sound detection supplies NO distance: do not say nearby or infer proximity. Do not invent injury, danger, safety, a cause, diagnosis, help dispatch or missing events.
 Do not repeat the input like a checklist. Relate the most useful observations in short, direct sentences.
 Unverified speaker identity means the speech is not linked to the measured subject; it does not mean the person did not say the transcribed words. Do not attribute measurements to that speaker or call them the wearer. Mention this limitation only when relevant.
-Use heart evidence only when it helps. Say heart rate or variation between heartbeats. Never write HR, HRV, RMSSD, SDNN, metric names, units or exact numbers in prose. Use above/below the supplied reference ONLY when comparison_allowed is true, with the given direction. Otherwise use the actual comparison_limitations, not an invented reason. Matching a reference means unchanged from that reference, NOT within normal limits or medically normal. No clinical high/low, usual baseline, trend, emotional diagnosis or causality from heart measurements alone.
+Use heart evidence only when it helps. Say heart rate or variation between heartbeats. Never write HR, HRV, RMSSD, SDNN, metric names, units or exact numbers in prose. Use above/below the supplied reference ONLY when comparison_allowed is true, with the given direction. Otherwise use the actual comparison_limitations, not an invented reason. Matching a reference means unchanged from that reference, NOT within normal limits or medically normal. No clinical high/low, usual baseline, trend, emotional diagnosis or causality from heart measurements alone. Each heart reading is one measurement compared with one earlier reference: never say readings remained, stayed steady or consistent during the window, or rose or fell over time.
+When the person describes fear as past or now says they are okay or calm, say that this current account does not clearly support a stress or distress state; do not cite the fear word, an extracted keyword or the label itself as support for current distress.
 Time and location are not danger scores. Omit location unless a supplied stale/last-known fix matters; do not geocode or infer isolation. Do not repeat a disclaimer after each observation. For a reliable detector result, call the sound detected; do not keep saying it is not a verified incident. Describe material uncertainty once. When support is weak, clearly say there is not enough reliable information, without a speculative story or repeated missing-data boilerplate.
 Do not include advice, headings, form fields, citations, technical IDs, exact timestamps or confidence percentages in text. Keep the entire paragraph under 130 words.
 Source fidelity: a verified speaker identity does not verify the truth of an external event. Attribute claimed pursuit, falls, threats and other incidents to the person reporting them (says/reports/describes); do not turn their account into an independently established event. Pain or a fall does not mean injury, even a "reported injury", unless an injury was actually reported. Preserve explicitly happy reasons for tears; do not add mixed emotions merely because crying or a distress label is present. Treat a supplied sound confidence below 0.5 as low certainty for wording; never repeat its numeric score. When a sound detector has low certainty, qualify the detection itself in the sentence using it (possible sound, tentative detection). Unverified speaker identity or missing speech is a different limitation.
-
+""" + SHARED_REVIEW_RULES + """
 """
 
 AUDIO_SYSTEM_PROMPT = """Interpret only the supplied transcript, tone and detected sound events in one plain-English paragraph, normally 30-65 words in 1-3 sentences. Return only the JSON object required by the schema.
@@ -35,7 +38,7 @@ Unverified identity means speech is not linked to the wearer; it does not mean t
 No backend state, keywords, sensor measurements, activity classification, chat, location or snapshot timing is available to this call. If the transcript mentions such a topic, describe only the speaker's account, never an independently verified measurement or fact.
 Use everyday wording without physiology acronyms, metric names, scores, recommendations, headings, source IDs or exact confidence percentages in prose. Qualify uncertain detections; call reliable sounds detected without adding a generic not-a-verified-incident disclaimer. A reported symptom or fall does not establish an injury or diagnosis. Mention material uncertainty once and stay under 130 words.
 Source fidelity: a verified speaker identity does not verify the truth of an external event. Attribute claimed pursuit, falls, threats and other incidents to the person reporting them (says/reports/describes); do not turn their account into an independently established event. Pain or a fall does not mean injury, even a "reported injury", unless an injury was actually reported. Preserve explicitly happy reasons for tears; do not add mixed emotions merely because crying or a distress label is present. Treat a supplied sound confidence below 0.5 as low certainty for wording; never repeat its numeric score. When a sound detector has low certainty, qualify the detection itself in the sentence using it (possible sound, tentative detection). Unverified speaker identity or missing speech is a different limitation.
-
+""" + SHARED_REVIEW_RULES + """
 """
 
 
@@ -252,8 +255,15 @@ def _generate_section(backend, client, facts, section):
     diagnostics = []
     reason = "grounding_failed"
     previous_draft = None
+    available = {f["id"]: f["data"] for f in facts}
+    transcript = available.get("TRANSCRIPT", {})
+    actor = attributed_actor(transcript.get("text"))
     for attempt in range(1, 3):
         prompt = AUDIO_SYSTEM_PROMPT if section == "audio" else DISTRESS_SYSTEM_PROMPT
+        if actor:
+            prompt += "\nThe transcript says the " + actor + " is the one calling out. Write that the " + actor + " shouts or asks for help; never write that the person or speaker is shouting or asking for help."
+        if transcript.get("text") and transcript.get("reliability") == "usable":
+            prompt += "\nThe transcript reliability is usable. Do not mention transcript reliability or transcription accuracy at all."
         if section == "distress":
             state = next(f["data"]["label"] for f in facts if f["id"] == "STATE")
             prompt += "\nThe supplied state is exactly " + state + ". Put STATE in an evidence_ids array when assessing it; never write that ID in prose."
@@ -261,6 +271,10 @@ def _generate_section(backend, client, facts, section):
                 prompt += "\nThis request includes current written user messages. Explicitly identify their content as written in a chat/message, using wrote or a similarly clear attribution. Do not describe written messages as spoken words. If speech is also supplied, distinguish what was said aloud from what was written, including any disagreement."
                 if next(f["data"]["text"] for f in facts if f["id"] == "TRANSCRIPT"):
                     prompt += "\nBoth spoken audio and written chat are present. Include both accounts and their source references in the evidence_ids arrays ONLY. In sentence text use ordinary words such as spoken account and written message, never source codes. For this mixed-input case, use separate sentences: start the spoken-account sentence with In the audio and start the written-account sentence with In a written message. Interpret the actual content after these attributions. Preserve both channel attributions when revising; do not replace the written account with the spoken account or vice versa."
+            if resolved_past_fear(available) and state in ("stress", "distress"):
+                prompt += "\nThe person describes the fear as past and now says they are okay or calm. State plainly that this current account does not clearly support the supplied " + state + " state. Do not say the fear word or the label supports current distress. Mention heart comparisons, if any, as separate observations that alone do not establish distress."
+            if "HR" in available or "HRV" in available:
+                prompt += "\nHeart readings here are single comparisons with an earlier reference, not a series. Do not describe them as remaining consistent or steady during the window."
             if other_person_fear(facts):
                 prompt += "\nThe transcript explicitly attributes fear to another person, with no direct first-person fear statement. Explain that person's account without transferring fear or distress to the speaker or measured subject, even as a hypothesis. Supporting heart readings alone cannot establish that person's emotional state."
             if audio_availability(facts):
