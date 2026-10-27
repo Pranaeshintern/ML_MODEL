@@ -66,8 +66,8 @@ def review_grounding_issues(draft, available, section):
                     continue
                 qualified = re.search(
                     r"\b(?:possible|possibly|potential|tentative|tentatively|uncertain|unclear|unreliable|unconfirmed|low.confidence)\s+(?:[\w-]+\s+){0,3}" + sound + r"\b"
-                    + r"|\b(?:detection|sound|noise|label)\s+(?:is|was|remains|seems)\s+(?:uncertain|unclear|unreliable|unconfirmed)\b"
-                    + r"|\b(?:detected|identified|detection)\s+(?:with |at |has |had )?(?:very )?low (?:confidence|certainty)\b"
+                    + r"|\b(?:detection|sound|noise|label)(?:'s)?(?: nature| type)?\s+(?:is|was|remains|seems)\s+(?:uncertain|unclear|unreliable|unconfirmed)\b"
+                    + r"|\b(?:detected|identified|detection)(?: for (?:a |an )?\w+)?\s+(?:with |at |has |had )?(?:very )?low (?:confidence|certainty)\b"
                     + r"|\b(?:may|might|could) (?:have been|be)\s+(?:a |an )?" + sound + r"\b"
                     + r"|\b[\w-]+-like (?:sound|noise)\b", text, re.I)
                 if not qualified:
@@ -75,6 +75,7 @@ def review_grounding_issues(draft, available, section):
         if section == "distress" and ids & chats.keys():
             written = re.search(r"\b(?:chat|message[sd]?|writ(?:es|ten|ing)|wrote|texts?|texted)\b", text, re.I)
             spoken = re.search(r"\b(?:audio|spoken|speech|aloud|verbally|says?|said)\b", text, re.I)
-            if not written or ("TRANSCRIPT" in ids and speech and not spoken):
-                issues.append("Identify the channels: what was said in the audio and what was written in the current user chat. Do not merge them into one spoken account or treat either as independently verified truth.")
+            written_context = written or (not speech and re.search(r"\b(?:chat|messages?|written|wrote|texted)\b", all_text, re.I))
+            if not written_context or ("TRANSCRIPT" in ids and speech and not spoken):
+                issues.append("Identify the channels: replace says/reports for written chat content with an explicit wrote/message/chat attribution. Attribute the spoken audio separately. Do not merge both channels into one spoken account or treat either as independently verified truth.")
     return issues

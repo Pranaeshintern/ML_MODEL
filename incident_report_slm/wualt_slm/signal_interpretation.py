@@ -4,7 +4,7 @@ import logging
 import re
 from decimal import Decimal
 import httpx
-from .interpretation_grounding import review_grounding_issues
+from .interpretation_grounding import review_grounding_issues, current_user_chat
 from .backend import BackendUnavailable, LlamaBackend, RUNTIME_LOCK
 from .signal_schema import InterpretationInput, InterpretationResponse, SignalDraft, SectionStatus, AttemptDiagnostic
 
@@ -257,6 +257,8 @@ def _generate_section(backend, client, facts, section):
         if section == "distress":
             state = next(f["data"]["label"] for f in facts if f["id"] == "STATE")
             prompt += "\nThe supplied state is exactly " + state + ". Put STATE in an evidence_ids array when assessing it; never write that ID in prose."
+            if current_user_chat({f["id"]: f["data"] for f in facts}):
+                prompt += "\nThis request includes current written user messages. Explicitly identify their content as written in a chat/message, using wrote or a similarly clear attribution. Do not describe written messages as spoken words. If speech is also supplied, distinguish what was said aloud from what was written, including any disagreement."
             if other_person_fear(facts):
                 prompt += "\nThe transcript explicitly attributes fear to another person, with no direct first-person fear statement. Explain that person's account without transferring fear or distress to the speaker or measured subject, even as a hypothesis. Supporting heart readings alone cannot establish that person's emotional state."
             if audio_availability(facts):

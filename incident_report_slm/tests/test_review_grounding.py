@@ -111,3 +111,22 @@ def test_conclusion_can_cite_already_qualified_detection_without_repeating_it():
 def test_score_repair_cannot_leave_a_meaningless_confidence_fragment():
     issues=check("dizzy-after-standing", "The person reports dizziness. The provided stress label has a confidence, but the observations are limited.", ["STATE","TRANSCRIPT"])
     assert any("entire clause" in issue for issue in issues)
+
+
+def test_chat_only_paragraph_can_establish_written_channel_once():
+    facts=prepare_signals(InterpretationInput.model_validate(CASES["chat-spanish"]))
+    draft=SignalDraft.model_validate({"sentences":[
+        {"text":"The person reports being trapped in an elevator and feeling afraid, asking for help.","evidence_ids":["CHAT1"]},
+        {"text":"This written message may support distress because it describes fear and asks for assistance.","evidence_ids":["CHAT1","STATE"]},
+    ]})
+    assert not draft_issues(draft,facts)
+    draft.sentences[1].text="This statement may support distress because it describes fear and asks for assistance."
+    assert any("channels" in issue for issue in draft_issues(draft,facts))
+
+
+@pytest.mark.parametrize("text", [
+    "The person asks about a noise, but the sound's nature is unclear.",
+    "The person asks about a noise, and the sound detection for a gunshot had low confidence.",
+])
+def test_natural_sound_uncertainty_does_not_require_one_fixed_phrase(text):
+    assert not check("uncertain-gunshot", text, ["TRANSCRIPT","EVENT1"], "audio")
