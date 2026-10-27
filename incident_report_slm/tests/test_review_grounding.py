@@ -58,6 +58,8 @@ def test_crying_for_joy_does_not_become_mixed_emotions():
 @pytest.mark.parametrize("text", [
     "A scream was detected, but no speech was available and the speaker is unverified.",
     "A scream was detected, but its source and context are unknown.",
+    "A scream was detected, but the speaker identity is uncertain.",
+    "A scream was detected, but its source is unclear.",
 ])
 def test_uncertain_source_does_not_qualify_low_detection_certainty(section, ids, text):
     assert any("detection itself" in i for i in check("uncertain-sound-label", text, ids, section))

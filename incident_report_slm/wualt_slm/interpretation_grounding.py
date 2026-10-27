@@ -59,7 +59,14 @@ def review_grounding_issues(draft, available, section):
             confidence = item.get("confidence")
             if re.fullmatch(r"EVENT\d+", key) and isinstance(confidence, (int, float)) and 0 < confidence < 0.5:
                 # Uncertain identity/source is not uncertainty about detection itself.
-                qualified = re.search(r"\b(?:possible|possibly|potential|tentative|uncertain|unclear|unreliable|unconfirmed|faint|low.confidence)\b.{0,65}\b(?:sound|noise|detect\w*|scream|gunshot|bark|label)\b|\b(?:sound|noise|detect\w*|scream|gunshot|bark|label)\b.{0,65}\b(?:uncertain|unclear|unreliable|unconfirmed|low confidence|may be|might be|could be)\b|\b(?:may|might|could) (?:have been|be)\b|\b\w+-like (?:sound|noise)\b", text, re.I)
+                event_words = [re.escape(w) for w in re.findall(r"[a-z]+", item.get("label", "").lower()) if len(w) > 2]
+                sound = r"(?:sound|noise|detection|detect(?:ed|ion)|scream|gunshot|barking|" + "|".join(event_words or ["event"]) + r")"
+                qualified = re.search(
+                    r"\b(?:possible|possibly|potential|tentative|tentatively|uncertain|unclear|unreliable|unconfirmed|low.confidence)\s+(?:[\w-]+\s+){0,3}" + sound + r"\b"
+                    + r"|\b(?:detection|sound|noise|label)\s+(?:is|was|remains|seems)\s+(?:uncertain|unclear|unreliable|unconfirmed)\b"
+                    + r"|\b(?:detected|identified|detection)\s+(?:with |at |has |had )?(?:very )?low (?:confidence|certainty)\b"
+                    + r"|\b(?:may|might|could) (?:have been|be)\s+(?:a |an )?" + sound + r"\b"
+                    + r"|\b[\w-]+-like (?:sound|noise)\b", text, re.I)
                 if not qualified:
                     issues.append("The sound detection itself has low certainty. Say a possible/tentatively detected sound or that detection is uncertain; missing speech or unverified identity does not express this limit.")
         if section == "distress" and ids & chats.keys():
