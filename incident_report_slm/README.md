@@ -1,4 +1,4 @@
-# WUALT interpretation API — 0.19.0
+# WUALT interpretation API — 0.19.1
 
 See [the deployment guide](../DEPLOYMENT.md) for model download and startup commands.
 
@@ -7,6 +7,8 @@ The wrapper accepts backend JSON and uses Qwen3-14B to return two independent pa
 2. `distress_interpretation`: original validated evidence, the supplied state and supporting context, including usable heart comparisons/current user chat.
 
 The backend owns the full report layout. This package does not transcribe audio, detect sounds, train weights, save reports or dispatch assistance.
+
+**0.19.1:** resolves four human-review findings from v0.18.0. Heart comparisons are not described as trends across the window. A game character's call for help stays attributed to the character. Past fear followed by "I am okay" or "I feel calm now" is not treated as support for current distress. A usable transcript gets no invented reliability caveat. The request and response contract is unchanged.
 
 ## Request
 
