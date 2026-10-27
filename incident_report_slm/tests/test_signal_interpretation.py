@@ -149,7 +149,7 @@ def test_number_not_supported_by_citations_is_rejected(payload):
     assert any("numbers" in issue for issue in draft_issues(draft,facts))
 
 def test_api_contract_validation_auth_and_busy(payload,monkeypatch,tmp_path):
-    import wualt_slm.incident_api as api
+    import wualt_slm.api as api
     fake=FakeBackend()
     monkeypatch.setattr(api,"backend",fake)
     monkeypatch.delenv("WUALT_API_KEY",raising=False)
@@ -172,7 +172,7 @@ def test_api_contract_validation_auth_and_busy(payload,monkeypatch,tmp_path):
         assert client.post("/v1/interpretations",json=payload,headers={"X-API-Key":"test-key"}).status_code==200
 
 def test_api_generation_failure_no_success_text(payload,monkeypatch):
-    import wualt_slm.incident_api as api
+    import wualt_slm.api as api
     class Failed(FakeBackend):
         def generate_interpretation(self,evidence): raise BackendUnavailable("failed")
     monkeypatch.setattr(api,"backend",Failed())
@@ -408,7 +408,7 @@ def test_safe_diagnostics_survive_successful_revision(payload,monkeypatch,caplog
 
 @pytest.mark.parametrize("status_code,expected_audio,expected_distress",[(200,"generated","failed"),(502,"failed","failed")])
 def test_api_preserves_sections_on_partial_and_total_failure(payload,monkeypatch,status_code,expected_audio,expected_distress):
-    import wualt_slm.incident_api as api
+    import wualt_slm.api as api
     replies=[audio_choice(),choice(ids=["INVENTED"])] if status_code==200 else [choice(ids=["INVENTED"])]
     install_transport(monkeypatch,replies)
     monkeypatch.setattr(api,"backend",LlamaBackend());monkeypatch.delenv("WUALT_API_KEY",raising=False)
@@ -541,7 +541,7 @@ def test_insufficient_context_is_a_data_status_without_inference(payload, monkey
 
 
 def test_api_returns_no_data_status_as_success_not_backend_failure(payload, monkeypatch):
-    import wualt_slm.incident_api as api
+    import wualt_slm.api as api
     payload.update(transcript=None, transcript_reliability="unavailable", tone=None, events=[], keywords={})
     requests = install_transport(monkeypatch, [choice()])
     monkeypatch.setattr(api, "backend", LlamaBackend()); monkeypatch.delenv("WUALT_API_KEY", raising=False)

@@ -1,9 +1,7 @@
-"""Public Python wrapper for WUALT incident-report generation."""
-from .incident_schema import IncidentBundle
-from .wrapper import IncidentReporter
-
-__version__ = "0.18.0"
+"""Public Python wrapper for WUALT signal interpretation."""
 from .signal_schema import InterpretationInput, InterpretationResponse
 from .signal_interpretation import SignalInterpreter
 
-__all__ = ["SignalInterpreter", "InterpretationInput", "InterpretationResponse", "IncidentBundle", "IncidentReporter"]
+__version__ = "0.19.0"
+
+__all__ = ["SignalInterpreter", "InterpretationInput", "InterpretationResponse"]

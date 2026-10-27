@@ -1,6 +1,6 @@
-# WUALT signal interpretation wrapper 0.18.0
+# WUALT signal interpretation wrapper 0.19.0
 
-The backend sends a compact JSON snapshot. The model explains what the supplied signals suggest and returns **separate audio and distress interpretation results**, with a status for each section. Report forms, officer/wearer details, report numbers, PDF rendering and button-trigger logic are not part of this path.
+The backend sends a compact JSON snapshot. The model explains what the supplied signals suggest and returns **separate audio and distress interpretation results**, with a status for each section. Report forms, officer/wearer details, report numbers, PDF rendering and button-trigger logic are not part of this package.
 
 ## Architecture
 
@@ -14,6 +14,10 @@ The calls are independent: the distress call uses original evidence, not the gen
 The wrapper consumes already-produced transcript, tone labels, sound-event labels and a normal/stress/distress classification. It does not transcribe audio, detect sounds or train a classifier. The supplied state is context to assess, not ground truth to repeat. HR and HRV support the explanation; values alone do not establish distress, cause or a diagnosis.
 
 The model configuration remains Qwen3-14B Q8_0 with llama.cpp b11582. This release changes the input contract, prompt and output interface; it does not train model weights. Exact model revision and checksums are in `wualt_slm/assets/runtime.lock.json`.
+
+## Legacy removal in 0.19.0
+
+The earlier incident-report path has been removed: `IncidentReporter`, the `generate` command, the `/v1/incident-reports` and `/v1/incident-examples` endpoints, the SQLite report store, database/server incident sources, PDF rendering, bundled fonts, the demo/context/physiology example bundles and the old report UI. The service no longer writes to disk, so `WUALT_DATA_DIR`, `WUALT_REPORT_MODE` and the `WUALT_SOURCE_*` variables are gone. `reportlab`, `uharfbuzz` and `pypdf` are no longer dependencies. The interpretation contract, prompts and model configuration are unchanged.
 
 ## Review fixes in 0.18.0
 
@@ -84,7 +88,7 @@ Each model call allows one bounded revision. The revision receives the rejected 
 
 HTTP 200 means a generated result or an explicit data-availability result; callers must inspect both section statuses. If neither section was generated and a model section failed, HTTP 502 retains the structured section results and diagnostics. Invalid inputs still return 422 and model-busy responses return 503. Unexpected backend-level failures may return the existing 502 detail response.
 
-Most requests make two model calls; requests without usable audio can make only the distress call when context exists, or no model call when data is insufficient. Legacy report APIs are unchanged. Input fields are not echoed into interpretation prose or the API response.
+Most requests make two model calls; requests without usable audio can make only the distress call when context exists, or no model call when data is insufficient. Input fields are not echoed into interpretation prose or the API response.
 
 ## Run
 
@@ -133,8 +137,6 @@ print(result["distress_interpretation"])
 **v0.14 response change:** Each interpretation string is now nullable and the required `sections.audio` / `sections.distress` metadata explains missing or failed output. HTTP 200 can contain one generated section; inspect statuses instead of assuming both are present.
 
 **Earlier v0.13 response change:** `/v1/interpretations`, `SignalInterpreter.interpret()` and the `interpret` CLI now return the two keys above instead of the v0.12 `interpretation` key. The `interpretation-v1` input JSON is unchanged. Update callers to read both keys.
-
-The earlier `IncidentReporter`, `generate` command and `/v1/incident-reports` endpoints remain for explicit legacy callers. They are not used by the new interpretation endpoint or home page. Existing report requests retain their old schema; they are not silently converted into the compact contract.
 
 ```bash
 pytest -q

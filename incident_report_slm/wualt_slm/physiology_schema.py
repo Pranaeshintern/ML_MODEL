@@ -34,19 +34,3 @@ class HRVMeasurement(StrictModel):
             raise ValueError('HRV reference must be from before the measurement window')
         return self
 
-
-class OtherMeasurement(StrictModel):
-    # Each name defines its unit; units cannot be guessed from an arbitrary value.
-    name: Literal['spo2_percent', 'respiratory_rate_per_minute', 'skin_temperature_c']
-    value: float
-    at: AwareDatetime
-    signal_quality: Quality = 'unknown'
-
-    @model_validator(mode='after')
-    def value_range(self):
-        bounds = {'spo2_percent': (0, 100), 'respiratory_rate_per_minute': (0, 150),
-                  'skin_temperature_c': (-20, 60)}
-        low, high = bounds[self.name]
-        if not low <= self.value <= high:
-            raise ValueError('Measurement is outside the accepted transport range')
-        return self

@@ -4,11 +4,7 @@ pydantic==2.14.1
 httpx==0.28.1
 uvicorn==0.54.0
 tzdata==2026.5
-reportlab==4.5.1
 starlette==1.9.0
 anyio==4.15.1
-pillow==13.0.0
 pytest==9.1.1
-pypdf==6.21.2
 build==1.6.1
-uharfbuzz==0.57.0

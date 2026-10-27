@@ -1,12 +1,42 @@
 """Compact backend signals in; separate audio and distress interpretations out."""
 from typing import Annotated, Literal
-from pydantic import AwareDatetime, Field, StringConstraints, model_validator
+from pydantic import AwareDatetime, Field, StringConstraints, field_validator, model_validator
 from .schemas import RequestBase, SourceId, StrictModel
-from .incident_schema import Window, Location, ChatMessage
 from .physiology_schema import Quality, HRVMeasurement
 
 Label = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
 Keyword = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+ShortText = Annotated[str, Field(min_length=1, max_length=250)]
+
+class Window(StrictModel):
+    start: AwareDatetime
+    end: AwareDatetime
+    context: ShortText | None = None
+
+    @model_validator(mode="after")
+    def ordered(self):
+        if not 0 < (self.end - self.start).total_seconds() <= 86400:
+            raise ValueError("Observation window must be positive and at most 24 hours")
+        return self
+
+class Location(StrictModel):
+    latitude: float = Field(ge=-90, le=90)
+    longitude: float = Field(ge=-180, le=180)
+    fixed_at: AwareDatetime
+    accuracy_m: float | None = Field(default=None, ge=0, le=100000)
+    last_known: bool = False
+
+class ChatMessage(StrictModel):
+    at: AwareDatetime
+    role: Literal["user", "assistant"]
+    text: str = Field(min_length=1, max_length=1000)
+
+    @field_validator("text")
+    @classmethod
+    def nonblank_text(cls, value):
+        if not value.strip():
+            raise ValueError("Chat text must contain words, not just whitespace")
+        return value
 
 class DetectedLabel(StrictModel):
     label: Label

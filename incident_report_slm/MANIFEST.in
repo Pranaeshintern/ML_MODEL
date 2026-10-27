@@ -5,4 +5,3 @@ include requirements.txt
 include requirements-tested.txt
 recursive-include scripts *.py
 recursive-include tests *.py
-recursive-include evaluations *.json *.md
