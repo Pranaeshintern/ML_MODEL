@@ -1,0 +1,20 @@
+[Unit]
+Description=WUALT interpretation REST API
+After=network-online.target wualt-model.service
+Wants=network-online.target wualt-model.service
+
+[Service]
+Type=simple
+User=wualt
+Group=wualt
+WorkingDirectory=/opt/wualt/source/incident_report_slm
+EnvironmentFile=/etc/wualt/wrapper.env
+ExecStart=/bin/bash /opt/wualt/source/incident_report_slm/deploy/start-wrapper.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
