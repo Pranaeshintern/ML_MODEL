@@ -1,14 +1,10 @@
-# Versions verified in a fresh Python 3.12 environment for this wrapper.
-fastapi==0.143.1
+# Versions used for the RunPod Python 3.12 verification of v0.11.0.
+fastapi==0.162.0
 pydantic==2.14.1
 httpx==0.28.1
 uvicorn==0.54.0
 tzdata==2026.5
-reportlab==4.5.1
-starlette==1.8.0
+starlette==1.9.0
 anyio==4.15.1
-pillow==12.3.0
 pytest==9.1.1
-pypdf==6.20.1
 build==1.6.1
-uharfbuzz==0.56.3

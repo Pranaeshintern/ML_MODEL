@@ -1,43 +1,32 @@
-"""Run with an installed wheel and python -I, from any directory."""
-from io import BytesIO
-from contextlib import chdir
-import json
-import os
-from pathlib import Path
-import tempfile
+"""Installed-wheel integration check; inference is explicitly simulated."""
+import json, os
 
 
 def main():
-    with tempfile.TemporaryDirectory(prefix="wualt-wheel-") as directory, chdir(directory):
-        os.environ["WUALT_DATA_DIR"] = directory
-        os.environ.pop("WUALT_API_KEY", None)
-        from fastapi.testclient import TestClient
-        from pypdf import PdfReader
-        from wualt_slm import IncidentReporter
-        from wualt_slm.backend import BackendUnavailable
-        from wualt_slm.settings import ASSET_ROOT
+    os.environ.pop('WUALT_API_KEY', None)
+    from fastapi.testclient import TestClient
+    from wualt_slm import SignalInterpreter
+    from wualt_slm.settings import ASSET_ROOT
+    import wualt_slm.api as api
 
-        class Offline:
-            def generate_incident(self, evidence):
-                raise BackendUnavailable("model_unavailable")
-
-        payload = json.loads((ASSET_ROOT / "examples/demo-001.json").read_text(encoding="utf-8"))
-        reporter = IncidentReporter(backend=Offline())
-        report = reporter.generate(payload)
-        assert report["view"]["colour"] == "RED"
-        assert len(PdfReader(BytesIO(reporter.pdf(report))).pages) == 1
-        import wualt_slm.incident_api as api
-        api.service = reporter.service
-        with TestClient(api.app) as client:
-            assert client.get("/").status_code == 200
-            assert client.get("/static/app.js").status_code == 200
-            assert len(client.get("/v1/incident-examples").json()["items"]) == 4
-            saved = client.post("/v1/incident-reports", json=payload)
-            assert saved.status_code == 200, saved.text
-            assert client.get(f"/v1/incident-reports/{saved.json()['id']}/pdf").content.startswith(b"%PDF")
-        assert (Path(directory) / "incident-reports.sqlite3").is_file()
-        print("Installed wheel passed: assets, Python wrapper, PDF, REST and external data directory.")
+    class SimulatedSignals:
+        def ready(self): return True
+        def generate_interpretation(self, evidence):
+            return {"audio_interpretation": "The request for help relates to the reported barking; an attack is not established.", "distress_interpretation": "The request for help supports the supplied distress label.", "sections": {name: {"status": "generated", "reason": None, "attempts": 1, "diagnostics": []} for name in ("audio", "distress")}}
+    api.backend = SimulatedSignals()
+    signal_payload = json.loads((ASSET_ROOT / 'examples/interpretation-v1.json').read_text())
+    assert set(SignalInterpreter(backend=api.backend).interpret(signal_payload)) == {"audio_interpretation", "distress_interpretation", "sections"}
+    with TestClient(api.app) as client:
+        assert client.get('/').status_code == 200
+        assert client.get('/health').json()['schemas'] == ['interpretation-v1']
+        assert client.get('/static/interpretation.js').status_code == 200
+        assert client.get('/static/interpretation.css').status_code == 200
+        compact = client.post('/v1/interpretations', json=signal_payload)
+        assert compact.status_code == 200 and set(compact.json()) == {"audio_interpretation", "distress_interpretation", "sections"}
+        assert client.get('/v1/interpretation-input-example').json()["schema_version"] == "interpretation-v1"
+        assert 'Interpret the situation.' in client.get('/').text
+        assert client.get('/v1/incident-examples').status_code == 404
+    print('Installed wheel passed: interpretation contract, assets and REST. Simulated inference only.')
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__': main()

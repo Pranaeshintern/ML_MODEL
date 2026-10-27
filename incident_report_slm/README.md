@@ -1,197 +1,187 @@
-# WUALT incident-report SLM
+# WUALT signal interpretation wrapper 0.19.2
 
-An installable Python wrapper and REST API for **only the WUALT colour-coded incident report**. The backend supplies a complete incident snapshot. The service validates it, asks a pretrained Qwen3 model for narrative text, checks that text against the evidence, and renders the report as JSON and PDF.
+The backend sends a compact JSON snapshot. The model explains what the supplied signals suggest and returns **separate audio and distress interpretation results**, with a status for each section. Report forms, officer/wearer details, report numbers, PDF rendering and button-trigger logic are not part of this package.
 
-This module is independent of the activity, sleep and snore packages in this repository. It consumes their already-computed observations through the incident payload; it does not run raw audio transcription, speaker identification or wearable signal classification.
+## Architecture
 
-## Install
+Backend signals -> validate JSON and timing -> prepare source-specific evidence -> generate and validate each paragraph -> return both section results.
 
-Python 3.11 or newer:
+1. **Audio interpretation:** receives only transcript, tone and sound-event labels, with their reliability/confidence and speaker-attribution metadata. No supplied state, keywords, HR/HRV, activity, chat, location or snapshot/window timing is sent to this call. It explains what the audio observations suggest.
+2. **Distress explanation:** receives the validated backend evidence. It explains which observations support or conflict with the supplied state, and what remains uncertain. Keywords are derived hints, not independent corroboration. HR/HRV provide supporting context only. It does not claim to know the upstream classifier's internal reasoning or establish an unobserved cause.
 
-```bash
-cd incident_report_slm
-python -m venv .venv
-# Windows PowerShell: .\.venv\Scripts\Activate.ps1
-# Linux/macOS: source .venv/bin/activate
-python -m pip install ".[dev]"
-python -m pytest -q
-```
+The calls are independent: the distress call uses original evidence, not the generated audio paragraph. A failed section does not discard a valid section. If no usable audio observations are supplied, the audio model call is skipped and its status is `not_available`; the distress call still runs when usable supporting context exists. With no situational context, it returns an insufficient-data status. This status is a data-availability notice, not fallback interpretation prose.
 
-For backend deployment without test tools, use `python -m pip install .` or `python -m pip install -r requirements.txt`. The wheel includes the UI, four fictional input examples and pinned model metadata. Runtime state is written outside the installed package.
+The wrapper consumes already-produced transcript, tone labels, sound-event labels and a normal/stress/distress classification. It does not transcribe audio, detect sounds or train a classifier. The supplied state is context to assess, not ground truth to repeat. HR and HRV support the explanation; values alone do not establish distress, cause or a diagnosis.
 
-## Pretrained model
+The model configuration remains Qwen3-14B Q8_0 with llama.cpp b11582. This release changes the input contract, prompt and output interface; it does not train model weights. Exact model revision and checksums are in `wualt_slm/assets/runtime.lock.json`.
 
-The wrapper targets **Qwen/Qwen3-1.7B-GGUF**, quantization **Q8_0**, served by **llama.cpp** under the alias `wualt-qwen3-1.7b`. Model revision, SHA256, expected file size and the Windows runtime release are pinned in [runtime.lock.json](wualt_slm/assets/runtime.lock.json). No fine-tuning is included. The weights download is approximately **1.83 GB**.
+## Review fixes in 0.19.1 and 0.19.2
 
-On Windows, download and verify the model and pinned Vulkan runtime:
+Four interpretations flagged in the v0.18.0 human review are addressed by prompt rules and matching rejection/revision diagnostics (prompt version `wualt-signals-v13-review-fixes`):
 
-```powershell
-wualt-slm setup-model
-$server = Get-ChildItem -LiteralPath .runtime/llama -Filter llama-server.exe -Recurse | Select-Object -First 1
-& $server.FullName -m models/Qwen3-1.7B-Q8_0.gguf --alias wualt-qwen3-1.7b --host 127.0.0.1 --port 8081 -c 4096 -np 1 -ngl 99 --jinja --reasoning off --no-ui
-```
+- Heart readings are single comparisons with a reference. Paragraphs must not describe them as remaining consistent or steady, or as rising or falling across the window.
+- When speech says a game character or another figure is shouting or asking for help, that call stays attributed to the character, not the person.
+- Fear described as past, with a current statement of being okay or calm, is not treated as support for current distress. The distress explanation must say the current account does not clearly support a stress or distress label.
+- A transcript marked usable gets no invented transcription-reliability caveat. In 0.19.2 this check is limited to doubts about the transcript itself, so doubting zero-confidence tone or sound labels is still allowed.
 
-Run that server in its own terminal. Use `-ngl 0` for CPU inference if GPU offload is unavailable; latency depends on hardware. An existing server can be used via `WUALT_MODEL_URL`. For Linux/macOS, `wualt-slm setup-model --model-only` downloads the same verified weights; run a compatible llama.cpp server with the same alias and flags. The download command does not install a Linux/macOS runtime.
+These are targeted regression safeguards, not a general semantic accuracy guarantee. The input contract, response shape and pinned model are unchanged.
 
-If the model server requires authentication, set `WUALT_MODEL_API_KEY` or `WUALT_MODEL_API_KEY_FILE`. Model weights, runtime binaries, credentials and generated user reports are excluded from version control.
+## Legacy removal in 0.19.0
 
-Upstream assets: [Qwen model repository](https://huggingface.co/Qwen/Qwen3-1.7B-GGUF), [pinned llama.cpp release](https://github.com/ggml-org/llama.cpp/releases/tag/b11582). Their own licenses apply to those assets.
+The earlier incident-report path has been removed: `IncidentReporter`, the `generate` command, the `/v1/incident-reports` and `/v1/incident-examples` endpoints, the SQLite report store, database/server incident sources, PDF rendering, bundled fonts, the demo/context/physiology example bundles and the old report UI. The service no longer writes to disk, so `WUALT_DATA_DIR`, `WUALT_REPORT_MODE` and the `WUALT_SOURCE_*` variables are gone. `reportlab`, `uharfbuzz` and `pypdf` are no longer dependencies. The interpretation contract, prompts and model configuration are unchanged.
 
-## Python integration
+## Review fixes in 0.18.0
 
-Create one reusable wrapper per process:
+Reported incidents remain attributed to the speaker even when their identity is verified. Pain and falls are not upgraded to injuries. Explicit happiness is not changed into mixed emotions without contrary evidence. Low-certainty sound detections are qualified in the sentence using them. Current user chat is considered as written testimony and kept distinct from spoken audio.
 
-```python
-import json
-from pathlib import Path
-from wualt_slm import IncidentReporter
+These prompt rules and targeted rejection/revision diagnostics preserve the two independent calls and the no-fallback behavior. They are regression safeguards, not a general semantic accuracy guarantee. The sound-wording check uses confidence below 0.5 as a conservative wording rule, not a calibrated probability threshold. Original input JSON remains unchanged in reports.
 
-reporter = IncidentReporter(model_url="http://127.0.0.1:8081")
-payload = json.loads(Path("wualt_slm/assets/examples/demo-001.json").read_text())
-report = reporter.generate(payload)  # replace payload with your backend's record
+## Input
 
-print(report["generation_mode"], report["validation_issues"])
-Path("incident.pdf").write_bytes(reporter.pdf(report))
-```
+Use `schema_version: "interpretation-v1"`. A complete fictional example is in [interpretation-v1.json](wualt_slm/assets/examples/interpretation-v1.json).
 
-`generate()` returns an unsaved draft dictionary and accepts either a mapping or an `IncidentBundle`. `pdf(report)` returns PDF bytes. For configured source lookup:
+Only `time` (an ISO timestamp with timezone) and `state.label` are required. Send available evidence; omit unknown measurements instead of supplying zero. `state.label` is `normal`, `stress`, `distress` or `unknown`.
 
-```python
-report = reporter.generate_from_source(
-    source="server", incident_id="INCIDENT-123", request_id="snapshot-123-v1"
-)
-```
-
-The wrapper validates IDs and source data. A busy model raises `BackendUnavailable("model_busy")`; missing/unavailable inference or rejected narrative text produces an explicitly marked factual fallback. Reuse the wrapper to share its inference lock. The REST API additionally saves reports and enforces idempotent request IDs.
-
-## REST API and preview
-
-In another terminal, after installing the package:
-
-```bash
-wualt-slm serve --data-dir ./outputs
-```
-
-Open `http://127.0.0.1:8000/` for the incident preview and `http://127.0.0.1:8000/docs` for the complete OpenAPI contract. The service also accepts `uvicorn wualt_slm.api:app --host 127.0.0.1 --port 8000 --workers 1`.
-
-The main backend integration is:
-
-```python
-import httpx
-
-response = httpx.post(
-    "http://127.0.0.1:8000/v1/incident-reports",
-    json=payload,
-    # headers={"X-API-Key": configured_report_api_key},
-    timeout=400,
-)
-response.raise_for_status()
-saved = response.json()
-pdf = httpx.get(f"http://127.0.0.1:8000/v1/incident-reports/{saved['id']}/pdf")
-pdf.raise_for_status()
-```
-
-Supply the configured `X-API-Key` on **both** requests when authentication is enabled. Reuse `request_id` only for retries of the same immutable input snapshot; a changed payload with the same ID returns `409`. Busy generation returns `503` with `Retry-After`.
-
-| Endpoint | Purpose |
+| Field | Meaning |
 | --- | --- |
-| `GET /health` | API readiness, model reachability and configured source flags |
-| `GET /v1/incident-examples` | Four fictional incident IDs |
-| `POST /v1/incident-reports` | Generate/save from a complete incident-v1 JSON snapshot |
-| `POST /v1/incident-reports/from-source` | Read a configured incident ID, then generate/save |
-| `GET /v1/incident-reports` | Recent saved reports |
-| `GET /v1/incident-reports/{id}` | Source snapshot, report fields, narratives and provenance |
-| `GET /v1/incident-reports/{id}/pdf?download=true` | Download the generated PDF |
+| `time` | Timestamp of the backend snapshot; observations cannot be from its future. |
+| `observation_window` | Optional backend-selected start/end window. Timed sound events and HR must fall within it. |
+| `state` | Upstream label and optional confidence from 0 to 1. |
+| `transcript` | Transcribed wording, preserving negation, quotations and tense. |
+| `transcript_reliability` | usable / limited / unreliable / unknown / unavailable. |
+| `speaker_verified` | Whether the transcript is verified as the subject's speech; defaults to false. |
+| `tone` | Supplied label and optional confidence, e.g. frightened or calm. |
+| `keywords` | Separate stress and distress lists. These are extraction hints, not independent observations. |
+| `events` | Detected sound labels such as dog barking or gunshot, with optional timestamp/confidence. |
+| `hr` | bpm, measurement time, signal quality and optional comparable reference. |
+| `hrv` | RMSSD or SDNN in ms, measurement window, quality, artifact correction and optional reference. |
+| `location` | Coordinates, fix time, optional accuracy and last-known flag. |
+| `activity`, `chat_context` | Optional supporting context; no activity or conversation is required. |
+| `request_id` | Optional caller reference. This stateless endpoint does not store or deduplicate requests. |
 
-## Database and server connection
+HR comparison requires usable quality and an explicitly comparable reference. HRV comparison additionally requires matching metric and duration, usable quality, artifact correction and overlap with the observation window. Invalid timestamps, reversed windows, invalid ranges, blank text and unknown fields fail before inference. Bounds are transport checks, not clinical thresholds.
 
-All source options return the same [incident-v1 payload](wualt_slm/assets/examples/demo-001.json). See [the typed schema](wualt_slm/incident_schema.py) for bounds and validation rules. Required fields include incident/report/request IDs, aware timestamps, the observation window, wearer ID, incident type, audio availability and button status. Unknown fields and inconsistent event timestamps are rejected. Requests are limited to 64 KiB.
+The distress prompt relates the transcript, tone and sound events to the supplied state; the audio prompt never receives that state. It preserves disagreements: a normal label must not erase a help request. A detected gunshot is not proof of a shooting; barking does not establish a dog attack. Location fix age/accuracy and time provide context, not a danger score. Raw coordinates and exact numeric measurements/timestamps are validated and reduced to comparison/timing descriptions before inference; the caller retains the original values. Only last-known or pre-window location fixes are included as interpretation limitations. Recent coordinates remain with the caller. This reduces confusion between units, locations and elapsed time in the paragraph. Input text is treated as untrusted data. Instruction-like labels and zero-confidence tone/sound labels are excluded from usable evidence; this is a heuristic, not a guarantee against all prompt injections.
 
-For source lookup, send:
+## Output
+
+Interpretation prose uses everyday language: no HR/HRV acronyms or RMSSD/SDNN metric names. Technical metric identifiers remain in the validated input, but are not sent as measurement names to the model. Heart comparisons are mentioned only when they help explain the case.
+
+When evidence is inadequate, explain the limitation in plain language. If usable audio and current user/activity context are absent (including state-only, physiology-only and keywords-only inputs), both interpretation strings are null and the report displays explicit data-availability notices. The distress reason is `insufficient_context`: "There is not enough reliable information to explain the supplied state." This result needs no model call and is not generated prose or a fallback. Technical model failures remain separate and are never mislabeled as missing data. An unreliable transcript alone does not count as usable audio. Presence of context does not prove sufficiency: the model must still assess relevance, negation, tense and alternative explanations.
+
+
+The response keeps the two interpretation keys and adds `sections` metadata. Text is non-null only when that section was generated and passed validation. For example, a physiology-only request can return:
 
 ```json
-{"source":"server","incident_id":"INCIDENT-123","request_id":"snapshot-123-v1"}
+{
+  "audio_interpretation": null,
+  "distress_interpretation": null,
+  "sections": {
+    "audio": {
+      "status": "not_available",
+      "reason": "no_audio_evidence",
+      "attempts": 0,
+      "diagnostics": []
+    },
+    "distress": {
+      "status": "not_available",
+      "reason": "insufficient_context",
+      "attempts": 0,
+      "diagnostics": []
+    }
+  }
+}
 ```
 
-| Source | Configuration |
-| --- | --- |
-| `demo` | Four fictional records seeded into the local sample SQLite database |
-| `database` | `WUALT_SOURCE_DB`: existing SQLite file, opened read-only |
-| `server` | `WUALT_SOURCE_API_BASE`: reads `GET {base}/incidents/{incident_id}`; optional `WUALT_SOURCE_API_TOKEN` bearer header |
+Section status is `generated`, `not_available` (insufficient usable data) or `failed`. Missing or wholly unusable audio gets no model-generated text; the UI displays a clearly labeled availability notice. A transcript is not required if usable tone or sound-event evidence exists.
 
-The SQLite adapter expects:
+Each model call allows one bounded revision. The revision receives the rejected structured draft and the exact validation issues, alongside the original evidence; it must correct the draft without adding unsupported facts. Direct model-control sentences are excluded from model-bound transcript evidence, while ordinary and quoted speech is retained. Exact original backend snapshots remain unchanged in review reports. This filtering is deliberately narrow and does not claim to detect every injection. Rejected output stays null; **fallback remains disabled**. The other section continues independently. No guards are disabled to make a failed paragraph appear successful. Rejected attempts record their specific validator messages in `diagnostics` and server warning logs, including when a later revision succeeds. These diagnostics never include raw input, rejected model prose, request IDs, exception strings or credentials. They identify which check failed; they do not establish semantic accuracy.
 
-```sql
-CREATE TABLE incident_source_records (
-    incident_id TEXT PRIMARY KEY,
-    payload_json TEXT NOT NULL
-);
+HTTP 200 means a generated result or an explicit data-availability result; callers must inspect both section statuses. If neither section was generated and a model section failed, HTTP 502 retains the structured section results and diagnostics. Invalid inputs still return 422 and model-busy responses return 503. Unexpected backend-level failures may return the existing 502 detail response.
+
+Most requests make two model calls; requests without usable audio can make only the distress call when context exists, or no model call when data is insufficient. Input fields are not echoed into interpretation prose or the API response.
+
+## Run
+
+Python 3.11 or later:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+python -m wualt_slm.setup_model --model-only --directory /workspace/slm-runtime
+llama-server -m /workspace/slm-runtime/models/Qwen3-14B-Q8_0.gguf --alias wualt-context-slm --host 127.0.0.1 --port 8081 -c 8192 -np 1 -ngl 99 --jinja --reasoning off
 ```
 
-`payload_json` and the server response must contain the complete incident-v1 record. Existing PostgreSQL/MySQL schemas can be mapped to this contract by the calling backend and sent directly to the POST endpoint. The model does not receive database credentials or issue SQL. The actual WUALT backend is **not preconfigured** in this package.
+The verified llama.cpp binary must be installed separately; the model-only command downloads weights. In another terminal:
 
-Set environment variables before starting the service. `.env.example` documents them; the application does not automatically load a `.env` file. `WUALT_DATA_DIR` controls local report storage, otherwise `~/.wualt-slm/data` is used. `WUALT_API_KEY` enables API-key checks on all `/v1` routes. `WUALT_ALLOWED_ORIGINS` is an exact comma-separated UI origin allowlist; by default only loopback port 8000 is allowed. This is a single-workspace service; a production backend must supply incident ownership and per-user authorization.
-
-## What the model does
-
-```mermaid
-flowchart LR
-  Source[Backend snapshot or source adapter] --> Validate[Typed validation]
-  Validate --> Facts[Exact fields and selected evidence]
-  Facts --> SLM[Pretrained Qwen3: two calls plus optional revision]
-  SLM --> Checks[Narrative checks / factual fallback]
-  Facts --> Render[Incident template]
-  Checks --> Render
-  Render --> Output[JSON draft and PDF]
+```bash
+export WUALT_MODEL_URL=http://127.0.0.1:8081
+wualt-slm serve --host 0.0.0.0 --port 8000
 ```
 
-The model drafts the **incident description** and **SLM interpretation**. IDs, contacts, measurements, coordinates, GPS-fix age, transcripts, recorded actions and layout come from source data and code. The backend supplies `assessment.context`; the renderer maps it to the illustrative colour band. Missing/unreliable audio forces grey, and an SOS retains urgent priority independently of the colour. The service does not infer a validated risk score, confirm safety, send alerts or fabricate signatures.
+Open the root page for the interpretation-only preview. Configure `WUALT_API_KEY` and `WUALT_ALLOWED_ORIGINS` before exposing the service. The configured API key is sent in `X-API-Key`.
 
-Inspect the output metadata:
+```bash
+curl -X POST http://127.0.0.1:8000/v1/interpretations \
+  -H 'Content-Type: application/json' \
+  --data-binary @wualt_slm/assets/examples/interpretation-v1.json
 
-- `generation_mode="model"`: both model narratives passed checks.
-- `generation_mode="mixed"`: one model narrative and one factual replacement.
-- `generation_mode="fallback"`: both narratives use factual source-based text.
-- `model_sections`, `validation_issues`, `prompt_version`, model revision and evidence IDs record what was used.
+wualt-slm interpret wualt_slm/assets/examples/interpretation-v1.json --output /workspace/review/interpretation.json
+```
 
-The small pretrained model can make semantic errors. The checks catch several known contradictions but do not prove correctness; reports remain drafts for review. In the four-case Desktop validation, two cases retained a model interpretation and two required full fallback. These examples are demonstrations, not a quality benchmark. No training dataset or training job is included.
+`GET /v1/interpretation-input-example` returns the example; `/openapi.json` contains the full contract. The API returns 422 for invalid input, 502 when no section could be generated because of a model failure and 503 with Retry-After when busy. It does not dispatch assistance.
 
-See [the 83-scenario development comparison](evaluations/2026-10-22/README.md) for exact inputs, before/after outputs, remaining warnings and reproduction steps.
-
-### Interpretation quality and raw review
-
-The v3 interpretation prompt receives a dedicated qualitative evidence view. Heart-rate comparison, audio availability/reliability, location status and uncertainty are derived from typed fields. Untrusted free-text limitations stay in the source snapshot and PDF but are not treated as authoritative instructions for the interpretation. This prevents a supplied limitation such as "no physiology supplied" from overriding recorded heart-rate measurements.
-
-The model is asked to explain specific observations rather than repeat assessment labels or evidence IDs. A focused consistency check permits **one additional model attempt**, using the original evidence and explicit correction requirements. It never writes replacement prose. The wrapper selects the candidate with fewer detected substantive errors, then fewer format errors; ties keep the first attempt. `interpretation_attempts` records the number generated and `interpretation_selected_attempt` identifies the retained candidate. The maximum is three model calls overall: description, interpretation and one interpretation revision. Remaining issues are recorded in `validation_issues`; these checks cannot prove semantic correctness.
-
-For manual inspection with all fallback substitution disabled:
+Python:
 
 ```python
-reporter = IncidentReporter(model_url="http://127.0.0.1:8081", mode="raw_review")
-report = reporter.generate(payload)
-assert report["fallback_enabled"] is False
-assert report["generation_mode"] == "model_unvalidated"
+from wualt_slm import SignalInterpreter
+result = SignalInterpreter("http://127.0.0.1:8081").interpret(payload)
+print(result["audio_interpretation"])
+print(result["distress_interpretation"])
 ```
 
-For CLI/API use, set `WUALT_REPORT_MODE=raw_review` **before starting the process**. In this mode the final model text is kept even when flagged, and invalid model output or backend failure raises an error (HTTP 502), never a fallback report. Model-busy responses remain HTTP 503 with retry guidance. Inputs still undergo normal schema validation. Use a fresh request ID to generate a new report; an existing ID returns its saved report.
+## Compatibility and verification
 
-The default `guarded` mode retains the existing fallback behavior. Raw-review JSON has `status="unvalidated_draft"`; its PDFs carry an explicit review banner. Sensor tables, priority, colour and layout are application-generated in both modes. The package includes licensed Noto Devanagari/Tamil fonts and HarfBuzz shaping for those scripts; it does not claim support for every script.
+**v0.15 response change:** `sections.distress` may be `not_available` with reason `insufficient_context` and zero attempts. HTTP 200 can return both sections as unavailable when usable context is absent; render the data-availability notices. Input JSON is unchanged.
 
-## CLI, packaging and tests
+**v0.14 response change:** Each interpretation string is now nullable and the required `sections.audio` / `sections.distress` metadata explains missing or failed output. HTTP 200 can contain one generated section; inspect statuses instead of assuming both are present.
+
+**Earlier v0.13 response change:** `/v1/interpretations`, `SignalInterpreter.interpret()` and the `interpret` CLI now return the two keys above instead of the v0.12 `interpretation` key. The `interpretation-v1` input JSON is unchanged. Update callers to read both keys.
 
 ```bash
-wualt-slm generate wualt_slm/assets/examples/demo-001.json --output outputs/report.json --pdf outputs/report.pdf
-python -m pytest -q
-python -m build
+pytest -q
+python scripts/evaluate_signal_interpretations.py --model-url http://127.0.0.1:8081 --output /workspace/review/signals
 ```
 
-Add `--require-model` to fail if the model service is unreachable; accepted generation can still use fallback when model text fails validation. The test suite uses a stub backend, so CI does not download weights or require a GPU. The wheel smoke check exercises installed assets, Python generation, PDF rendering and REST routes from outside the source checkout.
+Unit tests simulate inference. The evaluation command runs 117 fictional cases against a live model: 80 independently constructed situations across 10 categories, plus the original 37 regression checks. Use `--suite diverse` for the 80 new cases or `--suite original` for the original cases. Situations cover personal safety, accidents, reported physical symptoms, everyday pressures, exercise, environmental sounds, meaning and attribution, chat, incomplete data and multiple languages. New inputs start without inherited dog, sound or sensor observations. The standalone report has readable scenario titles, filters, two separate interpretations and exact input JSON; generated paragraphs are preserved unchanged. Scenario descriptions and review criteria are not sent to the model. Results remain separate from source code. Generation success and structural checks are not semantic accuracy scores. Do not commit generated outputs or model weights.
 
-## Optional API container
 
-```bash
-docker build -t wualt-incident-slm .
-docker run --rm -p 127.0.0.1:8000:8000 --env-file .env -v wualt-reports:/data wualt-incident-slm
+## Keep the editable code local
+
+Use a local Git checkout as the editable source. Commit and push reviewed changes, then update RunPod to the same commit. Keep generated reports and model weights outside the repository.
+
+Local terminal, from the repository root:
+
+```sh
+git pull --ff-only
+# Edit incident_report_slm/wualt_slm/signal_interpretation.py
+# Run tests in your Python environment before committing.
+python -m pytest incident_report_slm/tests
+git add incident_report_slm
+git commit -m "Improve interpretation instructions"
+git push
 ```
 
-Copy `.env.example` to `.env` and set `WUALT_MODEL_URL` to a llama.cpp server reachable **from the container**. The model is a separate process; `127.0.0.1:8081` inside the API container does not address the host. Use an appropriate Docker network or host gateway and protect non-loopback model access. This Dockerfile packages the API only; no runtime or model binaries are embedded.
+RunPod terminal, with the wrapper environment activated:
+
+```sh
+cd /workspace/ML_MODEL
+git pull --ff-only
+git rev-parse HEAD
+python -m pip install -e './incident_report_slm[dev]'
+cd incident_report_slm
+python scripts/evaluate_signal_interpretations.py --suite expanded --model-url http://127.0.0.1:18083 --output /workspace/review
+```
+
+Use the actual model-server port for your deployment. Restart a long-running wrapper process after pulling code so it loads the updated prompts. A prompt-only change does not require retraining or replacing model weights. Match `git rev-parse HEAD` locally and on RunPod to verify the version being tested.
