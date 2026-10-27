@@ -1,4 +1,4 @@
-# WUALT signal interpretation wrapper 0.19.1
+# WUALT signal interpretation wrapper 0.19.2
 
 The backend sends a compact JSON snapshot. The model explains what the supplied signals suggest and returns **separate audio and distress interpretation results**, with a status for each section. Report forms, officer/wearer details, report numbers, PDF rendering and button-trigger logic are not part of this package.
 
@@ -15,14 +15,14 @@ The wrapper consumes already-produced transcript, tone labels, sound-event label
 
 The model configuration remains Qwen3-14B Q8_0 with llama.cpp b11582. This release changes the input contract, prompt and output interface; it does not train model weights. Exact model revision and checksums are in `wualt_slm/assets/runtime.lock.json`.
 
-## Review fixes in 0.19.1
+## Review fixes in 0.19.1 and 0.19.2
 
 Four interpretations flagged in the v0.18.0 human review are addressed by prompt rules and matching rejection/revision diagnostics (prompt version `wualt-signals-v13-review-fixes`):
 
 - Heart readings are single comparisons with a reference. Paragraphs must not describe them as remaining consistent or steady, or as rising or falling across the window.
 - When speech says a game character or another figure is shouting or asking for help, that call stays attributed to the character, not the person.
 - Fear described as past, with a current statement of being okay or calm, is not treated as support for current distress. The distress explanation must say the current account does not clearly support a stress or distress label.
-- A transcript marked usable gets no invented transcription-reliability caveat.
+- A transcript marked usable gets no invented transcription-reliability caveat. In 0.19.2 this check is limited to doubts about the transcript itself, so doubting zero-confidence tone or sound labels is still allowed.
 
 These are targeted regression safeguards, not a general semantic accuracy guarantee. The input contract, response shape and pinned model are unchanged.
 

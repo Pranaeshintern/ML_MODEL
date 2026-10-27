@@ -182,3 +182,15 @@ def test_usable_transcript_gets_no_reliability_caveat_and_calm_message_is_weighe
     assert not draft_issues(faithful, facts)
     limited = check("chat-recovery", "In the audio, the person said they were frightened, though the transcript reliability is limited.", ["TRANSCRIPT"], "audio", transcript_reliability="limited")
     assert not any("marked usable" in i for i in limited)
+    for doubt in ("The reliability of the transcription is not confirmed.", "The transcription may be inaccurate.", "The accuracy of the transcript is uncertain."):
+        assert any("marked usable" in i for i in check("chat-recovery", "The person said they were frightened. " + doubt, ["TRANSCRIPT"], "audio"))
+
+
+@pytest.mark.parametrize("text", [
+    "The person asks for help to keep a dog away; the reliability of the tone and the barking detection is not established.",
+    "The person asks for help to keep a dog away, but the tone and sound labels are unreliable and their reliability is unknown.",
+    "The person asks for help to keep a dog away, while the frightened tone label has no reliable confidence.",
+])
+def test_doubting_zero_confidence_labels_is_not_a_transcript_reliability_caveat(text):
+    # Live 0.19.1 run: the broader check rejected both audio drafts for this case.
+    assert not any("marked usable" in i for i in check("zero-confidence", text, ["TRANSCRIPT", "TONE", "EVENT1"], "audio"))

@@ -28,10 +28,14 @@ def label_support(text, *, negated):
         if is_negated == negated:
             found.append(match)
     return found
+# Anchored to the transcript: doubts about zero-confidence tone or sound labels are legitimate.
+SPEECH_SOURCE = r"\b(?:transcript\w*|transcription|speech|spoken words?|recorded words)\b"
+DOUBT = r"\b(?:not|unconfirmed|uncertain|unclear|unknown|limited|questionable|unverified|in doubt)\b"
 RELIABILITY_DOUBT = (
-    r"\breliab\w*\b[^.;]{0,50}\b(?:not|unconfirmed|uncertain|unclear|unknown|limited|questionable|unverified|in doubt)\b"
-    r"|\b(?:not|un)\w*\s+(?:explicitly\s+)?(?:confirmed|verified|established)\b[^.;]{0,30}\breliab\w*"
-    r"|\b(?:transcript|transcription|speech recognition)\b[^.;]{0,40}\b(?:unreliable|inaccurate|may be wrong|may be incomplete)\b"
+    SPEECH_SOURCE + r"(?:'s)?[^.;]{0,30}\breliab\w*\b[^.;]{0,40}" + DOUBT
+    + r"|\breliab\w*\s+of\s+(?:the\s+)?" + SPEECH_SOURCE + r"[^.;]{0,40}" + DOUBT
+    + r"|\b(?:not|un)\w*\s+(?:explicitly\s+)?(?:confirmed|verified|established)\b[^.;]{0,20}\breliab\w*\s+of\s+(?:the\s+)?" + SPEECH_SOURCE
+    + r"|\b(?:transcript|transcription|speech recognition)\b[^.;]{0,40}\b(?:unreliable|inaccurate|may be wrong|may be incomplete)\b"
     r"|\b(?:accuracy|quality)\s+of\s+the\s+(?:transcript|transcription)\b[^.;]{0,30}\b(?:uncertain|unclear|unknown|unconfirmed|not confirmed|limited)\b")
 
 
