@@ -4,11 +4,13 @@ import logging
 import re
 from decimal import Decimal
 import httpx
-from .interpretation_grounding import review_grounding_issues, current_user_chat, attributed_actor, resolved_past_fear
+from .interpretation_grounding import review_grounding_issues, current_user_chat, attributed_actor, resolved_past_fear, english_like
 from .backend import BackendUnavailable, LlamaBackend, RUNTIME_LOCK
 from .signal_schema import InterpretationInput, InterpretationResponse, SignalDraft, SectionStatus, AttemptDiagnostic
 
-PROMPT_VERSION = "wualt-signals-v13-review-fixes"
+PROMPT_VERSION = "wualt-signals-v14-multilingual"
+LANGUAGE_RULES = """Speech and messages may be in any language, in any script, romanized (for example Hindi or Tamil in Latin letters) or mixed with English. Understand them in their original language and always write the paragraph in English. Translate meaning faithfully: keep negation, tense (past or current), who is speaking and who is affected, quotations, games, songs and jokes exactly as the original says. Use short translated meaning, not long quotes in the original script. Do not treat the language, accent or script as evidence of anything, and do not guess nationality or location from it. If a phrase's meaning is genuinely unclear, say it is unclear rather than guessing.
+"""
 SHARED_REVIEW_RULES = """Keep who performs each described action: when speech says a game character, story figure or another person is shouting, calling or asking for help, say that this character or person does so, not the speaker. Past emotion is not current emotion: fear described as past (I was scared last week) is a memory, especially when the person now says they are okay or calm. When transcript reliability is usable, do not add any caveat about transcription reliability or accuracy; mention reliability only when it is limited, unreliable or unknown.
 """
 LOGGER = logging.getLogger(__name__)
@@ -26,7 +28,7 @@ When the person describes fear as past or now says they are okay or calm, say th
 Time and location are not danger scores. Omit location unless a supplied stale/last-known fix matters; do not geocode or infer isolation. Do not repeat a disclaimer after each observation. For a reliable detector result, call the sound detected; do not keep saying it is not a verified incident. Describe material uncertainty once. When support is weak, clearly say there is not enough reliable information, without a speculative story or repeated missing-data boilerplate.
 Do not include advice, headings, form fields, citations, technical IDs, exact timestamps or confidence percentages in text. Keep the entire paragraph under 130 words.
 Source fidelity: a verified speaker identity does not verify the truth of an external event. Attribute claimed pursuit, falls, threats and other incidents to the person reporting them (says/reports/describes); do not turn their account into an independently established event. Pain or a fall does not mean injury, even a "reported injury", unless an injury was actually reported. Preserve explicitly happy reasons for tears; do not add mixed emotions merely because crying or a distress label is present. Treat a supplied sound confidence below 0.5 as low certainty for wording; never repeat its numeric score. When a sound detector has low certainty, qualify the detection itself in the sentence using it (possible sound, tentative detection). Unverified speaker identity or missing speech is a different limitation.
-""" + SHARED_REVIEW_RULES + """
+""" + SHARED_REVIEW_RULES + LANGUAGE_RULES + """
 """
 
 AUDIO_SYSTEM_PROMPT = """Interpret only the supplied transcript, tone and detected sound events in one plain-English paragraph, normally 30-65 words in 1-3 sentences. Return only the JSON object required by the schema.
@@ -38,7 +40,7 @@ Unverified identity means speech is not linked to the wearer; it does not mean t
 No backend state, keywords, sensor measurements, activity classification, chat, location or snapshot timing is available to this call. If the transcript mentions such a topic, describe only the speaker's account, never an independently verified measurement or fact.
 Use everyday wording without physiology acronyms, metric names, scores, recommendations, headings, source IDs or exact confidence percentages in prose. Qualify uncertain detections; call reliable sounds detected without adding a generic not-a-verified-incident disclaimer. A reported symptom or fall does not establish an injury or diagnosis. Mention material uncertainty once and stay under 130 words.
 Source fidelity: a verified speaker identity does not verify the truth of an external event. Attribute claimed pursuit, falls, threats and other incidents to the person reporting them (says/reports/describes); do not turn their account into an independently established event. Pain or a fall does not mean injury, even a "reported injury", unless an injury was actually reported. Preserve explicitly happy reasons for tears; do not add mixed emotions merely because crying or a distress label is present. Treat a supplied sound confidence below 0.5 as low certainty for wording; never repeat its numeric score. When a sound detector has low certainty, qualify the detection itself in the sentence using it (possible sound, tentative detection). Unverified speaker identity or missing speech is a different limitation.
-""" + SHARED_REVIEW_RULES + """
+""" + SHARED_REVIEW_RULES + LANGUAGE_RULES + """
 """
 
 
@@ -258,12 +260,16 @@ def _generate_section(backend, client, facts, section):
     available = {f["id"]: f["data"] for f in facts}
     transcript = available.get("TRANSCRIPT", {})
     actor = attributed_actor(transcript.get("text"))
+    written = " ".join(item["text"] for key, item in available.items() if re.fullmatch(r"CHAT\d+", key) and item.get("role") == "user")
+    non_english = [label for label, text in (("speech", transcript.get("text")), ("written message", written)) if text and not english_like(text)]
     for attempt in range(1, 3):
         prompt = AUDIO_SYSTEM_PROMPT if section == "audio" else DISTRESS_SYSTEM_PROMPT
         if actor:
             prompt += "\nThe transcript says the " + actor + " is the one calling out. Write that the " + actor + " shouts or asks for help; never write that the person or speaker is shouting or asking for help."
         if transcript.get("text") and transcript.get("reliability") == "usable":
             prompt += "\nThe transcript reliability is usable. Do not mention transcript reliability or transcription accuracy at all."
+        if non_english:
+            prompt += "\nThe " + " and the ".join(non_english) + " is not in English. Work from its meaning in the original language, write in English, and keep its negation, tense and attribution exactly. Do not mention the language unless it matters to the meaning."
         if section == "distress":
             state = next(f["data"]["label"] for f in facts if f["id"] == "STATE")
             prompt += "\nThe supplied state is exactly " + state + ". Put STATE in an evidence_ids array when assessing it; never write that ID in prose."

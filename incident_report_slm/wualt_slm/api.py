@@ -12,7 +12,7 @@ from .settings import ASSET_ROOT, allowed_origins
 
 backend = LlamaBackend()
 generation_lock = Lock()
-app = FastAPI(title='WUALT Signal Interpretation', version='0.19.2', description='Compact backend signals in; separate audio and distress interpretations out.')
+app = FastAPI(title='WUALT Signal Interpretation', version='0.20.0', description='Compact backend signals in; separate audio and distress interpretations out.')
 
 
 def authenticate(x_api_key: str | None = Header(default=None)):
@@ -52,7 +52,7 @@ async def validation_error(request, exc):
 
 @app.get('/health')
 def health():
-    return {'api': 'ready', 'model_ready': backend.ready(), 'prototype': True, 'service': 'wualt-incident-slm', 'workflow': 'interpretation-only', 'version': '0.19.2', 'schemas': ['interpretation-v1'], 'auth_required': bool(os.getenv('WUALT_API_KEY'))}
+    return {'api': 'ready', 'model_ready': backend.ready(), 'prototype': True, 'service': 'wualt-incident-slm', 'workflow': 'interpretation-only', 'version': '0.20.0', 'schemas': ['interpretation-v1'], 'auth_required': bool(os.getenv('WUALT_API_KEY'))}
 
 
 @router.get('/interpretation-input-example')

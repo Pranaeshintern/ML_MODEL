@@ -1,4 +1,4 @@
-# WUALT signal interpretation wrapper 0.19.2
+# WUALT signal interpretation wrapper 0.20.0
 
 The backend sends a compact JSON snapshot. The model explains what the supplied signals suggest and returns **separate audio and distress interpretation results**, with a status for each section. Report forms, officer/wearer details, report numbers, PDF rendering and button-trigger logic are not part of this package.
 
@@ -14,6 +14,17 @@ The calls are independent: the distress call uses original evidence, not the gen
 The wrapper consumes already-produced transcript, tone labels, sound-event labels and a normal/stress/distress classification. It does not transcribe audio, detect sounds or train a classifier. The supplied state is context to assess, not ground truth to repeat. HR and HRV support the explanation; values alone do not establish distress, cause or a diagnosis.
 
 The model configuration remains Qwen3-14B Q8_0 with llama.cpp b11582. This release changes the input contract, prompt and output interface; it does not train model weights. Exact model revision and checksums are in `wualt_slm/assets/runtime.lock.json`.
+
+## Multilingual tuning in 0.20.0
+
+Transcripts and chat messages can be in any language, script or romanized form, or mixed with English. The wrapper still receives text, not audio. Prompt version `wualt-signals-v14-multilingual` adds:
+
+- A language rule in both prompts: understand the original language, always write in English, and keep negation, tense, attribution, quotations, games and songs exactly. Language or script is never evidence of anything.
+- A per-request instruction when the speech or written message is not in English.
+- A language heuristic for the validator. Several checks are English word patterns, such as past fear, game characters, explicit joy and other-person fear. They cannot read other languages, so for non-English observations they do not fire and the prompt rules carry those cases.
+- The injury check accepts negated sentences with describing words, such as "does not confirm a wrist injury". For non-English observations it cannot tell whether an injury was reported, so an injury may appear only as the person's attributed account ("reports a broken wrist"), never as established fact.
+
+`scripts/evaluate_multilingual.py` runs 18 fictional cases in 15 language forms against a live model and saves every rejected draft with its issues for review. The service itself still never returns rejected prose.
 
 ## Review fixes in 0.19.1 and 0.19.2
 
