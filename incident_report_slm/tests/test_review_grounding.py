@@ -97,3 +97,12 @@ def test_distinguish_both_channels_and_keep_chat_out_of_audio():
 def test_old_or_assistant_chat_need_not_be_treated_as_current_testimony():
     for scenario in ("old-chat", "assistant-question"):
         assert not any("current user chat" in i or "channels" in i for i in check(scenario, "The person reports their situation; distress remains uncertain.", ["STATE", "TRANSCRIPT"]))
+
+
+def test_conclusion_can_cite_already_qualified_detection_without_repeating_it():
+    facts=prepare_signals(InterpretationInput.model_validate(CASES["hard-braking"]))
+    draft=SignalDraft.model_validate({"sentences":[
+        {"text":"The person reports a bang after sudden braking; a possible collision was detected.","evidence_ids":["TRANSCRIPT","EVENT1"]},
+        {"text":"The observations are insufficient to confirm stress because the event details remain uncertain.","evidence_ids":["STATE","EVENT1"]},
+    ]})
+    assert not draft_issues(draft,facts)

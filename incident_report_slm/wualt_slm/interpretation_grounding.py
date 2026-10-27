@@ -61,6 +61,9 @@ def review_grounding_issues(draft, available, section):
                 # Uncertain identity/source is not uncertainty about detection itself.
                 event_words = [re.escape(w) for w in re.findall(r"[a-z]+", item.get("label", "").lower()) if len(w) > 2]
                 sound = r"(?:sound|noise|detection|detect(?:ed|ion)|scream|gunshot|barking|" + "|".join(event_words or ["event"]) + r")"
+                if not re.search(r"\b" + sound + r"\b", text, re.I):
+                    # A conclusion may cite the event without asserting detection again.
+                    continue
                 qualified = re.search(
                     r"\b(?:possible|possibly|potential|tentative|tentatively|uncertain|unclear|unreliable|unconfirmed|low.confidence)\s+(?:[\w-]+\s+){0,3}" + sound + r"\b"
                     + r"|\b(?:detection|sound|noise|label)\s+(?:is|was|remains|seems)\s+(?:uncertain|unclear|unreliable|unconfirmed)\b"
