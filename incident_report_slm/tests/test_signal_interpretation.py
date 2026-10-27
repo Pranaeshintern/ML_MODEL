@@ -264,7 +264,8 @@ def test_non_audio_changes_cannot_change_audio_model_request(payload,monkeypatch
     interpreter.interpret(payload)
     altered=copy.deepcopy(payload);altered[field]=value
     interpreter.interpret(altered)
-    assert len(requests)==4 and requests[0]==requests[2]
+    audio_requests=[r for r in requests if r["response_format"]["json_schema"]["name"]=="audio_interpretation"]
+    assert len(audio_requests)==2 and audio_requests[0]==audio_requests[1]
     audio=json.loads(requests[0]["messages"][1]["content"])["evidence"]
     assert {f["id"] for f in audio}=={"TRANSCRIPT","TONE","EVENT1"}
     assert all("timing" not in f["data"] for f in audio)
