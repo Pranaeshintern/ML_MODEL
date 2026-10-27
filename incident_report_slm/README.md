@@ -1,4 +1,4 @@
-# WUALT signal interpretation wrapper 0.17.0
+# WUALT signal interpretation wrapper 0.17.1
 
 The backend sends a compact JSON snapshot. The model explains what the supplied signals suggest and returns **separate audio and distress interpretation results**, with a status for each section. Report forms, officer/wearer details, report numbers, PDF rendering and button-trigger logic are not part of this path.
 
@@ -136,3 +136,33 @@ python scripts/evaluate_signal_interpretations.py --model-url http://127.0.0.1:8
 ```
 
 Unit tests simulate inference. The evaluation command runs 117 fictional cases against a live model: 80 independently constructed situations across 10 categories, plus the original 37 regression checks. Use `--suite diverse` for the 80 new cases or `--suite original` for the original cases. Situations cover personal safety, accidents, reported physical symptoms, everyday pressures, exercise, environmental sounds, meaning and attribution, chat, incomplete data and multiple languages. New inputs start without inherited dog, sound or sensor observations. The standalone report has readable scenario titles, filters, two separate interpretations and exact input JSON; generated paragraphs are preserved unchanged. Scenario descriptions and review criteria are not sent to the model. Results remain separate from source code. Generation success and structural checks are not semantic accuracy scores. Do not commit generated outputs or model weights.
+
+
+## Keep the editable code local
+
+Use a local Git checkout as the editable source. Commit and push reviewed changes, then update RunPod to the same commit. Keep generated reports and model weights outside the repository.
+
+Local terminal, from the repository root:
+
+```sh
+git pull --ff-only
+# Edit incident_report_slm/wualt_slm/signal_interpretation.py
+# Run tests in your Python environment before committing.
+python -m pytest incident_report_slm/tests
+git add incident_report_slm
+git commit -m "Improve interpretation instructions"
+git push
+```
+
+RunPod terminal, with the wrapper environment activated:
+
+```sh
+cd /workspace/ML_MODEL
+git pull --ff-only
+git rev-parse HEAD
+python -m pip install -e './incident_report_slm[dev]'
+cd incident_report_slm
+python scripts/evaluate_signal_interpretations.py --suite expanded --model-url http://127.0.0.1:18083 --output /workspace/review
+```
+
+Use the actual model-server port for your deployment. Restart a long-running wrapper process after pulling code so it loads the updated prompts. A prompt-only change does not require retraining or replacing model weights. Match `git rev-parse HEAD` locally and on RunPod to verify the version being tested.

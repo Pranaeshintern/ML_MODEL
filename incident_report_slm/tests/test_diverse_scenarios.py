@@ -68,3 +68,33 @@ def test_report_distinguishes_generation_failure_missing_data_and_pending(tmp_pa
     assert "Not run yet. No model interpretation" in page
     assert "2</strong><span>rejected sections" in page
     assert "1</strong><span>not run yet" in page
+
+
+def test_readability_guard_rejects_processing_metadata():
+    from wualt_slm.signal_interpretation import draft_issues,prepare_signals
+    from wualt_slm.signal_schema import SignalDraft
+    facts=prepare_signals(InterpretationInput.model_validate(MODULE["cases"]("diverse")[0]["input"]))
+    for text in ["The backend reports distress.","Distress is not verified ground truth.","Fear with physiological arousal supports distress.","The distress label has 82% confidence."]:
+        draft=SignalDraft.model_validate({"sentences":[{"text":text,"evidence_ids":["STATE","TRANSCRIPT"]}]})
+        assert any("everyday wording" in issue for issue in draft_issues(draft,facts))
+
+
+def test_reference_match_does_not_establish_a_clinical_normal_range():
+    from wualt_slm.signal_interpretation import draft_issues,prepare_signals
+    from wualt_slm.signal_schema import SignalDraft
+    row=next(x for x in MODULE["cases"]("diverse") if x["scenario"]=="whispered-help")
+    facts=prepare_signals(InterpretationInput.model_validate(row["input"]))
+    for text in ["Heart rate is within normal limits, confirming the normal state.","The heart rate and measurements were in the normal range."]:
+        draft=SignalDraft.model_validate({"sentences":[{"text":text,"evidence_ids":["STATE","TRANSCRIPT","HR"]}]})
+        assert any("clinical normal range" in issue for issue in draft_issues(draft,facts))
+    draft=SignalDraft.model_validate({"sentences":[{"text":"The help request is not explained by the normal label. Heart rate matches the supplied reference.","evidence_ids":["STATE","TRANSCRIPT","HR"]}]})
+    assert not draft_issues(draft,facts)
+
+
+def test_reported_pain_is_not_upgraded_to_confirmed_injury():
+    from wualt_slm.signal_interpretation import draft_issues,prepare_signals
+    from wualt_slm.signal_schema import SignalDraft
+    row=next(x for x in MODULE["cases"]("diverse") if x["scenario"]=="fall-self")
+    facts=prepare_signals(InterpretationInput.model_validate(row["input"]))
+    draft=SignalDraft.model_validate({"sentences":[{"text":"Pain after the fall is indicating a physical injury and distress.","evidence_ids":["STATE","TRANSCRIPT"]}]})
+    assert any("confirmed injury" in issue for issue in draft_issues(draft,facts))

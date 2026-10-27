@@ -7,7 +7,7 @@ import httpx
 from .backend import BackendUnavailable, LlamaBackend, RUNTIME_LOCK
 from .signal_schema import InterpretationInput, InterpretationResponse, SignalDraft, SectionStatus, AttemptDiagnostic
 
-PROMPT_VERSION = "wualt-signals-v10-reader-friendly"
+PROMPT_VERSION = "wualt-signals-v11-readable-grounding"
 LOGGER = logging.getLogger(__name__)
 DISTRESS_SYSTEM_PROMPT = """Write a concise distress explanation from the supplied evidence, normally 40-85 words in 2-3 sentences. Return only the JSON object required by the schema.
 Each sentence has natural-language text and an evidence_ids array. Put source IDs ONLY in that array, never in text, parentheses or headings. Include STATE in an evidence_ids array when assessing the supplied state. Include TRANSCRIPT when using supplied speech. Every cited ID must exist.
@@ -18,8 +18,8 @@ Explain speech in context: preserve denials, past tense, quotations and who is a
 Use only supplied tone and sound labels, with their uncertainty. Barking can contextualize a plea to keep a dog away, but does not prove an attack. A gunshot detector label does not prove a shooting. Sound detection supplies NO distance: do not say nearby or infer proximity. Do not invent injury, danger, safety, a cause, diagnosis, help dispatch or missing events.
 Do not repeat the input like a checklist. Relate the most useful observations in short, direct sentences.
 Unverified speaker identity means the speech is not linked to the measured subject; it does not mean the person did not say the transcribed words. Do not attribute measurements to that speaker or call them the wearer. Mention this limitation only when relevant.
-Use heart evidence only when it helps. Say heart rate or variation between heartbeats. Never write HR, HRV, RMSSD, SDNN, metric names, units or exact numbers in prose. Use above/below the supplied reference ONLY when comparison_allowed is true, with the given direction. Otherwise use the actual comparison_limitations, not an invented reason. No clinical high/low, usual baseline, trend, emotional diagnosis or causality from heart measurements alone.
-Time and location are not danger scores. Omit location unless a supplied stale/last-known fix matters; do not geocode or infer isolation. Describe material uncertainty once. When support is weak, clearly say there is not enough reliable information, without a speculative story or repeated missing-data boilerplate.
+Use heart evidence only when it helps. Say heart rate or variation between heartbeats. Never write HR, HRV, RMSSD, SDNN, metric names, units or exact numbers in prose. Use above/below the supplied reference ONLY when comparison_allowed is true, with the given direction. Otherwise use the actual comparison_limitations, not an invented reason. Matching a reference means unchanged from that reference, NOT within normal limits or medically normal. No clinical high/low, usual baseline, trend, emotional diagnosis or causality from heart measurements alone.
+Time and location are not danger scores. Omit location unless a supplied stale/last-known fix matters; do not geocode or infer isolation. Do not repeat a disclaimer after each observation. Simply call a sound detected; do not keep saying it is not a verified incident. Describe material uncertainty once. When support is weak, clearly say there is not enough reliable information, without a speculative story or repeated missing-data boilerplate.
 Do not include advice, headings, form fields, citations, technical IDs, exact timestamps or confidence percentages in text. Keep the entire paragraph under 130 words.
 """
 
@@ -30,7 +30,7 @@ Write for a nontechnical reader. Lead with the meaning of the speech, not phrase
 Describe detector results as detected/reported observations. Barking does not establish an attack; a gunshot label does not establish a shooting. Detection supplies NO distance: do not say nearby or infer proximity. Do not invent sounds, tone, injury, diagnosis, danger, safety, a cause or dispatch.
 Unverified identity means speech is not linked to the wearer; it does not mean the person did not say those words. Unknown/low confidence remains uncertain. Omitted or excluded speech supplies no words to interpret; use other actual audio evidence and briefly explain the limit.
 No backend state, keywords, sensor measurements, activity classification, chat, location or snapshot timing is available to this call. If the transcript mentions such a topic, describe only the speaker's account, never an independently verified measurement or fact.
-Use everyday wording without physiology acronyms, metric names, scores, recommendations, headings, source IDs or exact confidence percentages in prose. Mention material uncertainty once and stay under 130 words.
+Use everyday wording without physiology acronyms, metric names, scores, recommendations, headings, source IDs or exact confidence percentages in prose. Call sounds detected without adding a generic not-a-verified-incident disclaimer. A reported symptom or fall does not establish an injury or diagnosis. Mention material uncertainty once and stay under 130 words.
 """
 
 
@@ -75,7 +75,7 @@ def prepare_signals(data: InterpretationInput) -> list[dict]:
             return "Within the supplied observation window" if data.observation_window.start <= at <= data.observation_window.end else "Before the supplied observation window"
         return "At the snapshot time" if at == data.time else "Before the snapshot time; no observation window supplied"
     add("TIME", {"observation_window_supplied": data.observation_window is not None, "context": "The backend snapshot time and window were validated; do not invent an exact time or elapsed duration."})
-    add("STATE", {"label": data.state.label, "confidence": data.state.confidence, "source": "backend classification, not verified ground truth"})
+    add("STATE", {"label": data.state.label, "confidence": data.state.confidence, "source": "provided label to assess against the observations"})
     transcript, excluded = observation_transcript(data.transcript)
     speech = {"text": transcript, "reliability": data.transcript_reliability if transcript else "unavailable", "speaker_verified": data.speaker_verified}
     if excluded:
@@ -90,12 +90,12 @@ def prepare_signals(data: InterpretationInput) -> list[dict]:
     if data.keywords.stress or data.keywords.distress:
         clean = {k: [v for v in values if not instructional_label(v)] for k, values in data.keywords.model_dump().items()}
         if any(clean.values()):
-            add("KEYWORDS", {**clean, "source": "derived extraction hints, not independent evidence"})
+            add("KEYWORDS", {**clean, "source": "words extracted from observations, not additional observations"})
     for i, event in enumerate(data.events, 1):
         value = {"label": event.label, "confidence": event.confidence, "timing": timing(event.at)}
         if instructional_label(event.label) or event.confidence == 0:
             value = {"usable": False, "reason": "Sound label has zero confidence or instruction-like content; no sound event established."}
-        add(f"EVENT{i}", {**value, "source": "reported sound detector label, not a verified incident"})
+        add(f"EVENT{i}", {**value, "source": "sound detector output; occurrence and source are not independently established"})
     if data.hr:
         h = data.hr
         allowed = h.signal_quality == "usable" and h.reference is not None and h.reference.comparable_context is True
@@ -170,6 +170,14 @@ def draft_issues(draft: SignalDraft, facts: list[dict], *, section="distress") -
     if section == "distress" and other_person_fear(facts) and re.search(
             r"(?i)\b(?:speaker|wearer|subject)\s+(?:(?:may|might|could)\s+(?:be\s+)?)?(?:is|seems|appears|experienc(?:es|ing)|feels?)\s+(?:to\s+be\s+)?(?:experiencing\s+)?(?:emotional\s+)?(?:distress(?:ed)?|fear|afraid|frightened|scared)\b", text):
         issues.append("The reported fear belongs to another person, not the speaker. Do not transfer it to the speaker even with may or might; explain that it does not establish the measured subject's distress.")
+    observation_text = " ".join(str(f["data"].get("text") or "") for f in facts if f["id"] == "TRANSCRIPT" or re.fullmatch(r"CHAT\d+", f["id"]))
+    jargon = re.findall(r"(?i)\b(?:backend|classifier|ground truth|physiological arousal|confidence(?: level| score)?)\b", text)
+    if any(term.lower() not in observation_text.lower() for term in jargon):
+        issues.append("Use everyday wording about the observations and their meaning. Remove backend/classifier terminology, ground truth, confidence scores and physiological arousal. Do not replace the explanation with classification metadata.")
+    if re.search(r"(?i)\b(?:within|in) (?:the )?normal (?:limits|range)\b|\b(?:heart rate|heart rate variability|measurements|readings)\s+(?:is|are|were|was)\s+(?:medically )?(?:normal|healthy|safe)\b", text) and not re.search(r"(?i)normal (?:limits|range)|medically normal", observation_text):
+        issues.append("No clinical normal range was supplied. Matching the reference means unchanged from the reference, not medically normal or safe. Remove the clinical claim; use only the permitted comparison when useful.")
+    if re.search(r"(?i)\b(?:indicating (?:a|an) (?:physical )?injury|after an injury)\b", text) and not re.search(r"(?i)\binjur\w*\b", observation_text):
+        issues.append("The observations report pain or an event, not a confirmed injury. Describe the reported symptom or event without upgrading it to an injury.")
     if len(text) > 1800: issues.append("Keep the entire interpretation under 1800 characters.")
     if len(text.split()) > 130: issues.append("Keep the entire paragraph at most 130 words; combine related facts and remove repeated caveats.")
     if not available["TRANSCRIPT"]["speaker_verified"] and re.search(r"(?i)\b(?:the )?wearer\s+(?:reports|says|states|asks|denies|requests)\b", text):
