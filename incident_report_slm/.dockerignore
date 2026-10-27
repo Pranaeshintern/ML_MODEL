@@ -1,6 +1,7 @@
 *
 !pyproject.toml
 !README.md
+!requirements-tested.txt
 !wualt_slm/
 !wualt_slm/**
 **/__pycache__/

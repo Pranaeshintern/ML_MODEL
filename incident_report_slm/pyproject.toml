@@ -16,9 +16,6 @@ dependencies = [
   "tzdata>=2025.1",
 ]
 
-[project.optional-dependencies]
-dev = ["pytest>=8,<10", "build>=1,<2"]
-
 [project.scripts]
 wualt-slm = "wualt_slm.cli:main"
 
@@ -27,7 +24,3 @@ include = ["wualt_slm*"]
 
 [tool.setuptools.package-data]
 wualt_slm = ["assets/*.json", "assets/examples/*.json", "assets/web/*.html", "assets/web/*.css", "assets/web/*.js"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
