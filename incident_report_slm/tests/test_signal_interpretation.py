@@ -324,7 +324,7 @@ def test_missing_audio_is_not_filled_from_physiology_or_state(payload,monkeypatc
     assert result["audio_interpretation"] is None
     assert result["sections"]["audio"]=={"status":"not_available","reason":"no_audio_evidence","attempts":0,"diagnostics":[]}
     assert result["sections"]["distress"]["status"]=="generated"
-    assert "No usable audio observations" in requests[0]["messages"][0]["content"]
+    assert "not enough reliable situational evidence" in requests[0]["messages"][0]["content"]
 
 
 @pytest.mark.parametrize("text",[
@@ -577,3 +577,15 @@ def test_sparse_explanation_cannot_bury_limit_or_pad_it_with_speculation(payload
     facts = prepare_signals(InterpretationInput.model_validate(payload))
     draft = SignalDraft.model_validate({"sentences": [{"text": text, "evidence_ids": ["STATE", "HR", "HRV"]}]})
     assert draft_issues(draft, facts)
+
+
+
+def test_limited_evidence_request_does_not_invite_a_measurement_story(payload, monkeypatch):
+    payload.update(transcript=None, transcript_reliability="unavailable", tone=None, events=[], keywords={})
+    requests = install_transport(monkeypatch, [choice("There is not enough reliable information to explain the supplied distress state.", ["STATE"])])
+    result = SignalInterpreter(backend=LlamaBackend()).interpret(payload)
+    assert result["sections"]["distress"]["status"] == "generated"
+    evidence = json.loads(requests[0]["messages"][1]["content"])["evidence"]
+    assert {f["id"] for f in evidence} == {"STATE", "TRANSCRIPT", "HR", "HRV"}
+    assert "comparison_direction" not in json.dumps(evidence) and "rmssd" not in json.dumps(evidence)
+    assert "at most TWO sentences and 45 words" in requests[0]["messages"][0]["content"]

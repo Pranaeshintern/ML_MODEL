@@ -4,7 +4,7 @@ The backend sends a compact JSON snapshot. The model explains what the supplied 
 
 ## Architecture
 
-Backend signals ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ validate JSON and timing ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ two isolated model calls ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ check each paragraph ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ return both interpretations.
+Backend signals ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ validate JSON and timing ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ two isolated model calls ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ check each paragraph ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ return both interpretations.
 
 1. **Audio interpretation:** receives only transcript, tone and sound-event labels, with their reliability/confidence and speaker-attribution metadata. No supplied state, keywords, HR/HRV, activity, chat, location or snapshot/window timing is sent to this call. It explains what the audio observations suggest.
 2. **Distress explanation:** receives the validated backend evidence. It explains which observations support or conflict with the supplied state, and what remains uncertain. Keywords are derived hints, not independent corroboration. HR/HRV provide supporting context only. It does not claim to know the upstream classifier's internal reasoning or establish an unobserved cause.
@@ -46,7 +46,7 @@ The distress prompt relates the transcript, tone and sound events to the supplie
 
 Interpretation prose uses everyday language: no HR/HRV acronyms or RMSSD/SDNN metric names. Technical metric identifiers remain in the validated input, but are not sent as measurement names to the model. Heart comparisons are mentioned only when they help explain the case.
 
-When evidence is inadequate, the model should state that there is not enough reliable information to assess or explain the supplied state, usually in one or two sentences. State-only and physiology-only cases must include that explicit limitation. A non-technical limitation is a valid model result; a service/validation failure still has a null result and failure metadata. A transcript marked unreliable cannot by itself make audio available. Presence of context is not proof of its sufficiency: assessing relevance, negation, tense and alternative explanations still requires model and manual review.
+When evidence is inadequate, the model should state that there is not enough reliable information to assess or explain the supplied state, usually in one or two sentences. State-only and physiology-only cases use a short dedicated model prompt with evidence availability and quality, without measurement directions or raw keyword text. They must lead with that explicit limitation and stay within two sentences and 45 words. A non-technical limitation is a valid model result; a service/validation failure still has a null result and failure metadata. A transcript marked unreliable cannot by itself make audio available. Presence of context is not proof of its sufficiency: assessing relevance, negation, tense and alternative explanations still requires model and manual review.
 
 The response keeps the two interpretation keys and adds `sections` metadata. Text is non-null only when that section was generated and passed validation. For example, a physiology-only request can return:
 
