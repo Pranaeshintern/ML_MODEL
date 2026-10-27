@@ -171,8 +171,9 @@ def draft_issues(draft: SignalDraft, facts: list[dict], *, section="distress") -
             r"(?i)\b(?:speaker|wearer|subject)\s+(?:(?:may|might|could)\s+(?:be\s+)?)?(?:is|seems|appears|experienc(?:es|ing)|feels?)\s+(?:to\s+be\s+)?(?:experiencing\s+)?(?:emotional\s+)?(?:distress(?:ed)?|fear|afraid|frightened|scared)\b", text):
         issues.append("The reported fear belongs to another person, not the speaker. Do not transfer it to the speaker even with may or might; explain that it does not establish the measured subject's distress.")
     observation_text = " ".join(str(f["data"].get("text") or "") for f in facts if f["id"] == "TRANSCRIPT" or re.fullmatch(r"CHAT\d+", f["id"]))
-    jargon = re.findall(r"(?i)\b(?:backend|classifier|ground truth|physiological arousal|confidence(?: level| score)?)\b", text)
-    if any(term.lower() not in observation_text.lower() for term in jargon):
+    jargon = re.findall(r"(?i)\b(?:backend|classifier|ground truth|physiological arousal)\b", text)
+    scores = re.search(r"(?i)\bconfidence(?: level| score)\b|\b\d+(?:\.\d+)?\s*%|\bconfidence\s*(?:of|is|was|:)?\s*\d+(?:\.\d+)?", text)
+    if scores or any(term.lower() not in observation_text.lower() for term in jargon):
         issues.append("Use everyday wording about the observations and their meaning. Remove backend/classifier terminology, ground truth, confidence scores and physiological arousal. Do not replace the explanation with classification metadata.")
     if re.search(r"(?i)\b(?:within|in) (?:the )?normal (?:limits|range)\b|\b(?:heart rate|heart rate variability|measurements|readings)\s+(?:is|are|were|was)\s+(?:medically )?(?:normal|healthy|safe)\b", text) and not re.search(r"(?i)normal (?:limits|range)|medically normal", observation_text):
         issues.append("No clinical normal range was supplied. Matching the reference means unchanged from the reference, not medically normal or safe. Remove the clinical claim; use only the permitted comparison when useful.")

@@ -98,3 +98,12 @@ def test_reported_pain_is_not_upgraded_to_confirmed_injury():
     facts=prepare_signals(InterpretationInput.model_validate(row["input"]))
     draft=SignalDraft.model_validate({"sentences":[{"text":"Pain after the fall is indicating a physical injury and distress.","evidence_ids":["STATE","TRANSCRIPT"]}]})
     assert any("confirmed injury" in issue for issue in draft_issues(draft,facts))
+
+
+def test_readability_guard_preserves_ordinary_detection_uncertainty():
+    from wualt_slm.signal_interpretation import draft_issues,prepare_signals
+    from wualt_slm.signal_schema import SignalDraft
+    row=next(x for x in MODULE["cases"]("original") if x["scenario"]=="uncertain-gunshot")
+    facts=prepare_signals(InterpretationInput.model_validate(row["input"]))
+    draft=SignalDraft.model_validate({"sentences":[{"text":"The person asks about a noise. A possible gunshot was detected with low confidence, so this does not establish distress.","evidence_ids":["STATE","TRANSCRIPT","EVENT1"]}]})
+    assert not draft_issues(draft,facts)
