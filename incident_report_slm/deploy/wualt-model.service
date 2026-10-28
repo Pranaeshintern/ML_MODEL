@@ -9,6 +9,8 @@ User=wualt
 Group=wualt
 WorkingDirectory=/opt/wualt/source/incident_report_slm
 Environment=WUALT_RUNTIME_DIR=/var/lib/wualt
+# Optional: WUALT_MODEL_PORT=<port> when 8081 is taken (see DEPLOYMENT.md step 5).
+EnvironmentFile=-/etc/wualt/model.env
 ExecStart=/bin/bash /opt/wualt/source/incident_report_slm/deploy/start-model.sh
 Restart=on-failure
 RestartSec=10
