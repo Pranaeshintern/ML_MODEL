@@ -1,0 +1,4 @@
+# Inference only. No scikit-learn, no joblib.
+numpy>=1.24
+scipy>=1.10
+onnxruntime>=1.17        # reads model.onnx

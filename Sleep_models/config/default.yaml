@@ -1,0 +1,105 @@
+# WUALT sleep pipeline — default configuration.
+# Every number here traces to a section of WUALT_Sleep_Pipeline_v2_1.docx.
+# Nothing in this file should be duplicated as a literal in code.
+
+pipeline_version: "0.1.0"
+
+aggregation:
+  row_minutes: 15
+  epoch_seconds: 30
+  # Sliding-window augmentation for training only (never at inference).
+  # 15 = non-overlapping. 5 gives ~3x rows at the cost of correlated samples, which
+  # may be worth it at ~2,000 rows. See decisions D-005. Subject-grouped LOSO is
+  # mandatory once this is < row_minutes.
+  # THIS DESCRIBES THE SHIPPED TABLE: unified_duty90.parquet holds three phases at
+  # 0 / 5 / 10 min offsets (10,550 / 10,423 / 10,316 rows), built with a 300 s
+  # stride. It read 15 until 12 Sep 2026, which claimed the windows do not overlap.
+  # Every pipeline already splits with GroupKFold on subject_key, so nothing was
+  # mis-split; but `AggregationConfig.uses_overlapping_windows` derives its answer
+  # from this value and has no callers, so the claim was never checked against it.
+  train_stride_minutes: 5
+  min_valid_epochs: 20        # rows with fewer valid epochs are dropped, not labelled
+
+# §4 — sleep-state machine. Thresholds are config, never constants.
+state_machine:
+  # ONE gate. The 0.5 candidate threshold was removed 02 Sep 2026: measured on 353
+  # nights it selected the same row as 0.7 on 97.5% of them, because P(asleep) is
+  # near-binary (0.95% of rows fall in 0.05-0.95). T_onset is the FIRST of the two
+  # consecutive rows above this threshold.
+  onset_threshold: 0.7             # P(onset) > this on `onset_confirm_rows` rows -> ASLEEP
+  onset_confirm_rows: 2            # sets the minimum confirmation lag: rows x 15 min
+  wake_confirm_rows: 2             # Wake x2 rows OR motion+HR jump -> WAKE_DET
+  # Escape hatches
+  candidate_timeout_hours: 6.0     # T_bedtime + 6 h -> rule-based fallback fires
+  nap_max_duration_min: 90         # wake < 90 min post-onset + HR/temp off baseline -> nap
+  allow_redetection: false         # §4: once ASLEEP, never re-run Layer 1 this session
+
+# §7 — HMM. Row/column order is Stage: [wake, light, deep, rem]. Do not reorder.
+hmm:
+  transition_matrix_version: "psg_lit_v1"
+  # MVP: fixed, from PSG literature, row-normalised.
+  # Production: fit from pilot data via Baum-Welch (~10 iterations).
+  transition_matrix:
+    - [0.85, 0.15, 0.00, 0.00]   # from Wake
+    - [0.03, 0.75, 0.10, 0.12]   # from Light
+    - [0.01, 0.28, 0.65, 0.06]   # from Deep
+    - [0.05, 0.30, 0.02, 0.63]   # from REM
+  initial_distribution: [0.70, 0.25, 0.03, 0.02]
+  laplace_alpha: 0.01            # smoothing when fitting (§8)
+  missing_row_policy: transition_prior   # §7: Viterbi still runs on gaps
+  # Layer 2 emits a POSTERIOR P(stage|x); an HMM emission wants a LIKELIHOOD
+  # P(x|stage). The hybrid fix is to divide by the class prior. §7 does not
+  # mention it, so it defaults off — see decisions D-012.
+  prior_correction: false
+  class_prior: null              # null -> use the transition matrix's stationary distribution
+
+# §6 — personal baselines
+baselines:
+  cold_start_nights: 14          # baseline_confidence ramps 0 -> 1 over this many nights
+  # DREAMT has ONE night per subject, so cross-night baselines are impossible there.
+  # Fall back to a within-night reference taken from the PREP period.
+  within_night_reference: prep_period
+  cycle_phase_subtraction: true  # skipped automatically when phase is unknown
+
+# §9 — evaluation targets.
+# Onset targets restated in ROWS 10 Sep 2026. §5 defines onset as the interval
+# [T-15min, T], so the original ±15/±30 min bars meant one row and two rows; scoring
+# them as symmetric minute windows on a back-dated row start made them asymmetric.
+# NOTE: nothing reads these. Targets.check() has no callers.
+targets:
+  mvp:
+    accuracy_4class: 0.75
+    macro_f1: 0.70
+    cohens_kappa: 0.60
+    per_stage_f1_deep: 0.65
+    per_stage_f1_rem: 0.65
+    onset_within_1_row: 0.80
+    onset_within_2_rows: 0.95
+    time_in_stage_err_deep_min: 20
+    time_in_stage_err_rem_min: 25
+  production:
+    accuracy_4class: 0.85
+    macro_f1: 0.80
+    cohens_kappa: 0.70
+    per_stage_f1_deep: 0.75
+    per_stage_f1_rem: 0.75
+    onset_within_1_row: 0.90
+    onset_within_2_rows: 0.98
+
+evaluation:
+  scheme: loso                   # §8: subject-level, NEVER random rows
+  n_folds: null                  # null = leave-one-subject-out over all subjects
+  report_per_subject: true       # §9 needs the per-subject breakdown to flag subgroups
+  stratify_by: [apnea_burden]    # DREAMT ships apnea columns; use them
+
+data:
+  raw_dir: raw
+  interim_dir: data/interim
+  processed_dir: data/processed
+  sample_rate_hz: 64
+  # Set the exclusion rule BEFORE looking at model scores (decisions D-006).
+  excluded_subjects: []
+
+# Sleep Score constants live with the algorithm, in Sleep_Score_Algorithm/config.yaml.
+# They are deliberately NOT duplicated here: the scoring layer is a standalone package
+# with its own config, and core/session.py adapts the pipeline to it.

@@ -1,0 +1,97 @@
+{
+  "n_windows": 47,
+  "t_start_s": [
+    0.0,
+    15.0,
+    30.0,
+    45.0,
+    "..."
+  ],
+  "labels": [
+    1,
+    1,
+    1,
+    1,
+    "..."
+  ],
+  "labels_raw": [
+    1,
+    1,
+    1,
+    1,
+    "..."
+  ],
+  "label_names": [
+    "walking",
+    "walking",
+    "walking",
+    "walking",
+    "..."
+  ],
+  "confidence": [
+    0.9133,
+    0.9134,
+    0.9134,
+    0.9134,
+    "..."
+  ],
+  "abstain_rate": 0.0,
+  "bouts": [
+    {
+      "label": 1,
+      "t_start_s": 0.0,
+      "t_end_s": 180.0,
+      "n_windows": 11,
+      "duration_s": 180.0,
+      "label_name": "walking"
+    },
+    {
+      "label": 2,
+      "t_start_s": 165.0,
+      "t_end_s": 375.0,
+      "n_windows": 13,
+      "duration_s": 210.0,
+      "label_name": "running"
+    },
+    {
+      "label": 1,
+      "t_start_s": 360.0,
+      "t_end_s": 540.0,
+      "n_windows": 11,
+      "duration_s": 180.0,
+      "label_name": "walking"
+    },
+    {
+      "label": 2,
+      "t_start_s": 525.0,
+      "t_end_s": 720.0,
+      "n_windows": 12,
+      "duration_s": 195.0,
+      "label_name": "running"
+    }
+  ],
+  "sessions": [
+    {
+      "t_start_s": 0.0,
+      "t_end_s": 720.0,
+      "duration_s": 720.0,
+      "labels": [
+        "walking",
+        "running",
+        "walking",
+        "running"
+      ],
+      "label_seconds": {
+        "walking": 330.0,
+        "running": 390.0
+      },
+      "session_label": "other_cardio",
+      "needs_confirmation": true,
+      "cardio_stretch": {
+        "t_start_s": 0.0,
+        "t_end_s": 720.0,
+        "duration_s": 720.0
+      }
+    }
+  ]
+}

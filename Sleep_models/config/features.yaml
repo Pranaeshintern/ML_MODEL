@@ -1,0 +1,110 @@
+# WUALT 15-min row feature dictionary
+#
+# STATUS: v1 — revised against the ring's real sensing regime and DREAMT probes.
+#
+# CHANGES FROM v0
+#   - EDA block removed: not present on the ring.
+#   - lf_hf_ratio removed: 0.04 Hz has a 25 s period, so a 90 s burst gives ~3.6
+#     cycles. Not a reliable estimate; a plausible-looking number would be worse
+#     than no number.
+#   - HRV restructured for ONE 90 s burst per row rather than 30 continuous epochs.
+#     `rmssd_mean` / `rmssd_std` (mean-of-epochs) no longer have a meaning.
+#   - `sdnn` is ULTRA-SHORT-TERM over 90 s. Not comparable to published 5-min SDNN.
+#   - `sqi_ppg` redefined as beat coverage; `hrv_artifact_rate` added, since the
+#     DREAMT probe showed rejection rate is itself informative about wear quality.
+#
+# RULES
+#   - Order is contractual. Append only; never reorder or delete without a version bump.
+#   - All `shared` features MUST precede all `layer1` features (enforced in code).
+#   - Every feature declares an explicit `missing` policy. Trees see NaN; never impute.
+#   - `baseline_subtract: true` -> per-cycle-phase personal baseline subtracted BEFORE
+#     inference (§6). Skipped when cycle phase is unknown.
+
+version: 2
+row_minutes: 15
+epoch_seconds: 30
+ppg_burst_seconds: 90        # sensor on-time per row; HRV is computed over this only
+
+features:
+
+  # ---- Heart rate (5) ----------------------------------------------------------
+  - {name: hr_mean,            scope: shared, source: NN,   agg: window, unit: bpm,      missing: nan, baseline_subtract: true}
+  - {name: hr_min,             scope: shared, source: NN,   agg: window, unit: bpm,      missing: nan, baseline_subtract: true}
+  - {name: hr_std,             scope: shared, source: NN,   agg: window, unit: bpm,      missing: nan, baseline_subtract: false}
+  - {name: hr_slope,           scope: shared, source: NN,   agg: window, unit: bpm/hr,   missing: nan, baseline_subtract: false}
+  - {name: hr_delta_vs_rhr,    scope: shared, source: NN,   agg: derived, unit: bpm,     missing: nan, baseline_subtract: false,
+     note: "hr_mean minus personal resting HR; population RHR during cold-start"}
+
+  # ---- HRV, from the artifact-corrected NN series (7) --------------------------
+  # DREAMT probe (S003): ~91-103 beats per 90 s burst at 60 bpm; Malik rejection ~1%.
+  # RMSSD ordering came out W 46 < N2 80 < REM 82 < N3 91 ms — textbook, though
+  # absolute values run high because wrist PPG measures PULSE rate variability.
+  - {name: rmssd,              scope: shared, source: NN, agg: window, unit: ms,      missing: nan, baseline_subtract: true}
+  - {name: sdnn,               scope: shared, source: NN, agg: window, unit: ms,      missing: nan, baseline_subtract: true,
+     note: "ultra-short-term over 90 s; NOT comparable to 5-min SDNN"}
+  - {name: pnn50,              scope: shared, source: NN, agg: window, unit: fraction, missing: nan, baseline_subtract: false}
+  - {name: poincare_sd1,       scope: shared, source: NN, agg: window, unit: ms,      missing: nan, baseline_subtract: false}
+  - {name: poincare_sd2,       scope: shared, source: NN, agg: window, unit: ms,      missing: nan, baseline_subtract: false}
+  - {name: sd1_sd2_ratio,      scope: shared, source: NN, agg: window, unit: ratio,   missing: nan, baseline_subtract: false}
+  - {name: hrv_sample_entropy, scope: shared, source: NN, agg: window, unit: nats,    missing: nan, baseline_subtract: false,
+     note: "§9's chaos-index role: the named Light<->REM discriminator. Verify its importance."}
+
+  # ---- Accelerometer (6) -------------------------------------------------------
+  - {name: activity_count_mean,  scope: shared, source: ACC, agg: window, unit: counts,   missing: nan, baseline_subtract: false}
+  - {name: activity_count_max,   scope: shared, source: ACC, agg: window, unit: counts,   missing: nan, baseline_subtract: false}
+  - {name: still_fraction,       scope: shared, source: ACC, agg: window, unit: fraction, missing: nan, baseline_subtract: false}
+  - {name: acc_magnitude_std,    scope: shared, source: ACC, agg: window, unit: g,        missing: nan, baseline_subtract: false}
+  - {name: posture_change_count, scope: shared, source: ACC, agg: window, unit: n,        missing: 0.0, baseline_subtract: false}
+  - {name: movement_burst_count, scope: shared, source: ACC, agg: window, unit: n,        missing: 0.0, baseline_subtract: false}
+
+  # ---- Temperature (4) ---------------------------------------------------------
+  - {name: temp_mean,          scope: shared, source: TEMP, agg: window, unit: degC,    missing: nan, baseline_subtract: true}
+  - {name: temp_slope,         scope: shared, source: TEMP, agg: window, unit: degC/hr, missing: nan, baseline_subtract: false,
+     note: "rising distal temp is a core onset signal in the §5 rule baseline"}
+  - {name: temp_std,           scope: shared, source: TEMP, agg: window, unit: degC,    missing: nan, baseline_subtract: false}
+  - {name: temp_delta_vs_base, scope: shared, source: TEMP, agg: derived, unit: degC,   missing: nan, baseline_subtract: false}
+
+  # ---- Time (6) ----------------------------------------------------------------
+  # DROPPED FROM LAYER 1 AT TRAINING TIME, 11 Sep 2026 — see D-014 and pipelines/
+  # 10_train_onset.py CLOCK. The feature itself is sound; the TRAINING COVERAGE is not.
+  # BIDSleep is the only corpus with a wall clock and it holds nights only, so the model
+  # never sees 12:00-18:00 and every 09:00-11:00 example is someone still asleep in a
+  # lab. On free-living data (MMASH) that inverts the diurnal response and costs 6 of 21
+  # nights. Still EMITTED by every adapter, and it stays available for the day a
+  # corpus with labelled daytime exists.
+  # THE EXCLUSION IS LAYER 1 ONLY. Layer 2 uses both, in its current default set
+  # and in the shipped artifact's feature_order. The coverage argument above
+  # applies to the same two corpora there, but staging has no onset decision for a
+  # spurious hour-of-day signal to corrupt, so the effect is untested either way.
+  # NOTE: `missing: error` is not enforced anywhere (featuredict's `raises_when_missing`
+  # has no callers), which is why DREAMT emitting NaN on all 100 nights was never caught.
+  - {name: clock_hour_sin,     scope: shared, source: TIME, agg: derived, unit: unit, missing: error, baseline_subtract: false}
+  - {name: clock_hour_cos,     scope: shared, source: TIME, agg: derived, unit: unit, missing: error, baseline_subtract: false}
+  - {name: minutes_in_record,  scope: shared, source: TIME, agg: derived, unit: min,  missing: error, baseline_subtract: false,
+     note: "PROTOCOL ARTIFACT in a lab cohort — everyone starts near the same hour, so this encodes the schedule. DROPPED IN LAYER 1 ONLY (10_train_onset.py PROTOCOL); Layer 2 ships it. Measured 12 Sep 2026, one seed: removing it costs kappa 0.0144 and removing the clock pair costs 0.0134, but removing all three costs 0.0137 — not additive, so both encode one quantity. Untested whether that is information or the corpus prior."}
+  # v2: sleep-cycle position. The strongest non-EEG prior for separating Deep from
+  # REM — N3 front-loads into the first ~2 cycles, REM back-loads into the last.
+  # Measured from a DETECTED event, so unlike minutes_in_record it is causal and
+  # carries over to free-living data where bedtime varies.
+  - {name: minutes_since_onset, scope: shared, source: TIME, agg: derived, unit: min, missing: nan, baseline_subtract: false}
+  - {name: cycle_phase_sin,     scope: shared, source: TIME, agg: derived, unit: unit, missing: nan, baseline_subtract: false,
+     note: "position within the ~90 min ultradian cycle; sin/cos so 89 min and 1 min are adjacent"}
+  - {name: cycle_phase_cos,     scope: shared, source: TIME, agg: derived, unit: unit, missing: nan, baseline_subtract: false}
+
+  # ---- Signal quality (3) ------------------------------------------------------
+  - {name: sqi_ppg,             scope: shared, source: NN,  agg: derived, unit: fraction, missing: 0.0, baseline_subtract: false,
+     note: "beat coverage: observed beats / beats expected from mean HR over the burst"}
+  - {name: hrv_artifact_rate,   scope: shared, source: NN,  agg: derived, unit: fraction, missing: 1.0, baseline_subtract: false}
+  - {name: sqi_acc,             scope: shared, source: ACC, agg: derived, unit: fraction, missing: 0.0, baseline_subtract: false,
+     note: "time coverage: share of the row with a real accelerometer sample within 1 s (accel_epochs.time_coverage, the same test as the 30-second WASO coverage). Rate-independent, never above 1.0. Rebuilt 15 Sep 2026; before that BIDSleep divided a sample count by a rate guessed from the first 2,000 samples (up to 1.83, because the watch switches between ~50 and ~100 Hz) and DREAMT only checked for NaN (always 1.0)."}
+
+  # ---- Personal-baseline context (1) -------------------------------------------
+  - {name: baseline_confidence, scope: shared, source: CONTEXT, agg: derived, unit: unit, missing: 0.0, baseline_subtract: false,
+     note: "0 on night 1, ramps to 1.0 by night 14 (§6). Always 0.0 on DREAMT — one night per subject."}
+
+  # ---- Layer-1 specific (4, §5) ------------------------------------------------
+  - {name: hours_since_bedtime,      scope: layer1, source: CONTEXT, agg: derived, unit: hr, missing: nan, baseline_subtract: false}
+  - {name: sustained_still_rows,     scope: layer1, source: STATE,   agg: derived, unit: n,  missing: 0.0, baseline_subtract: false,
+     note: "state-machine memory — carried across rows, not computable from one row"}
+  - {name: row_evening_hr_delta,     scope: layer1, source: CONTEXT, agg: derived, unit: bpm, missing: nan, baseline_subtract: false}
+  - {name: hours_since_record_start, scope: layer1, source: TIME,    agg: derived, unit: hr,  missing: error, baseline_subtract: false}

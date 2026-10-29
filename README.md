@@ -1,11 +1,20 @@
-# WUALT SLM deployment
+# WUALT model modules
 
-Deployment-only branch: **deploy/slm**. Start with [DEPLOYMENT.md](DEPLOYMENT.md).
+Each folder has its own installation and integration instructions.
 
-This branch contains the runtime wrapper, required modules/assets, one input example, dependency constraints, a wrapper Dockerfile and Linux service launchers. Model weights are downloaded from the pinned official Qwen revision and verified by SHA-256; weights are not stored in GitHub.
+| Module | Purpose |
+| --- | --- |
+| [activity_detection](activity_detection/) | Wearable activity detection |
+| [Sleep_models](Sleep_models/) | Sleep pipeline and model artifacts |
+| [snore_detection](snore_detection/) | Snore inference bundle |
+| [incident_report_slm](incident_report_slm/) | Pretrained Qwen3 wrapper and REST API for audio and distress signal interpretation |
+
+## Incident report SLM
 
 - [Backend deployment guide](DEPLOYMENT.md)
 - [API contract](incident_report_slm/README.md)
 - [Complete input JSON](incident_report_slm/wualt_slm/assets/examples/interpretation-v1.json)
 
-The development branch `codex/interpretation-only-json` retains tests and evaluation tools. This branch excludes those tools, reports, logs, weights and unrelated activity/sleep/snore projects. Wrapper version 0.19.0 and interpretation behavior are unchanged by deployment packaging.
+Model weights are downloaded from the pinned official Qwen revision and verified by SHA-256; weights are not stored in GitHub.
+
+Branches: `deploy/slm` holds only the SLM deployment files. `codex/interpretation-only-json` holds the SLM with its tests and evaluation tools.
