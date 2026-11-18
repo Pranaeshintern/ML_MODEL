@@ -11,8 +11,13 @@ domain, §1).
                         v                                                 v
                      ASLEEP*                                    WAKE_DET -> finalise
 
-T_onset is the FIRST of the `onset_confirm_rows` consecutive rows above the threshold —
-the row that entered CANDIDATE_ONSET — not the row that completed the run.
+WHAT THE CODE EMITS (corrected 0.1.1 -- this paragraph used to say the opposite):
+`OnsetEvent.confirmed_at` is the END of the row that COMPLETES the run, i.e. the second of
+the `onset_confirm_rows` consecutive rows above the threshold, and the event's interval is
+that row. Layer 1's published row accuracy (`onset_row` in layer1/model.meta.json) was
+scored against the FIRST of those rows, so the emitted onset sits one row (15 min) later
+than the scored one. Back-dating it is an open decision, not a doc fix: it moves
+`onset_time`, the session duration and where the staging buffer starts.
 
 ONE GATE, since 02 Sep 2026. §4 originally specified 0.5 to enter CANDIDATE_ONSET and
 0.7 to confirm. Measured over 353 nights the two selected the SAME row on 97.5% of them:

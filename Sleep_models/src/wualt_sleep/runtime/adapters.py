@@ -133,6 +133,9 @@ class WakeAdapter:
     looks identical asleep or lying awake. `context_matrix` builds those 26 inputs from
     the 13 stored per epoch; handing the scorer the 13 raw columns is a shape error, and
     building the context in a different order is not.
+
+    Pass a WHOLE NIGHT (every buffered row's epochs, stacked), never one row: the rolling
+    windows and the median that `act_mean_rel` divides by were fitted per night.
     """
 
     version = "waso/epoch"

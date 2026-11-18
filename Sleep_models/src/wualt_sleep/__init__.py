@@ -16,7 +16,7 @@ from .featuredict import FeatureDictionary, load_feature_dictionary
 from .schema import Epoch, LabelledRow, OnsetLabel, Row, StageLabel
 from .types import PSGStage, SessionOutcome, SleepState, Stage
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "Config",

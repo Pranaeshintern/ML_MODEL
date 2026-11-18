@@ -265,13 +265,22 @@ class SleepPipeline:
         n_rows = len(self._buffer)
         pwake = np.zeros(n_rows * ROW_EPOCHS)
         if self.wake_detector is not None:
-            for i, ep in enumerate(self._buffer.accel):
-                if ep.size == 0:
-                    continue                     # no motion for this row: adds no wake
-                p = np.asarray(self.wake_detector.predict_wake_proba(ep),
+            # ONE call over every buffered row, not one call per row. The scorer's
+            # context (rolling windows over 5 and 21 epochs, and activity divided by the
+            # night's own median) was fitted on whole nights -- `estimate_waso` scores a
+            # night in one call. Scoring row by row restarted the windows at every row
+            # edge and divided by the ROW's median, so a row of continuous movement read
+            # as ordinary activity. Fixed in 0.1.1. Rows without motion still add no wake.
+            have = [i for i, ep in enumerate(self._buffer.accel) if ep.size]
+            if have:
+                blocks = [self._buffer.accel[i][:ROW_EPOCHS] for i in have]
+                p = np.asarray(self.wake_detector.predict_wake_proba(np.vstack(blocks)),
                                dtype=np.float64).ravel()
-                n = min(p.size, ROW_EPOCHS)
-                pwake[i * ROW_EPOCHS:i * ROW_EPOCHS + n] = p[:n]
+                pos = 0
+                for i, ep in zip(have, blocks):
+                    n = min(len(ep), max(p.size - pos, 0))
+                    pwake[i * ROW_EPOCHS:i * ROW_EPOCHS + n] = p[pos:pos + n]
+                    pos += len(ep)
         self._last_pwake = pwake
         return merge_hypnogram(probs, np.arange(n_rows), pwake,
                                epoch_offset=0, threshold=self.wake_threshold)
@@ -386,6 +395,14 @@ class SleepPipeline:
         except Exception:
             still = None
         self.context.update(None if still is None or np.isnan(still) else still)
+        # Keep the context's copy of baseline_confidence in step with the row. It was
+        # never updated before 0.1.1, so every StageEstimate reported cold_start=True.
+        try:
+            bc = row.get("baseline_confidence", self.fd)
+        except Exception:
+            bc = None
+        if bc is not None and np.isfinite(bc):
+            self.context.baseline_confidence = float(bc)
 
     def _stamp(self) -> ProvenanceStamp:
         return ProvenanceStamp(

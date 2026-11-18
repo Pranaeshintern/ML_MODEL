@@ -7,7 +7,11 @@ Three trained models in two forms, and the code that serves them.
 implementation and parity oracle** — the thing a native port is checked against, not the
 thing that runs.
 
-Contacts: admin1@wualt.com · Pipeline version `0.1.0` · Feature dictionary v2
+Contacts: admin1@wualt.com · Pipeline version `0.1.1` · Feature dictionary v2
+
+**Feeding the models from the ring: read [`INTEGRATION.md`](INTEGRATION.md)** — which model
+reads which feature, how every row value is built, the accelerometer rules, and the open
+decisions. Changes in 0.1.1 are listed at the end of that file.
 
 ---
 
@@ -37,11 +41,14 @@ artifacts/waso/model.joblib        982 KB   WASO: epoch scorer + 3 band heads
 artifacts/waso/model.meta.json             feature orders, band edges, grid rate
 config/features.yaml                       the 32-feature dictionary (v2)
 config/default.yaml                        thresholds, timeouts, versions
-src/wualt_sleep/                   255 KB   the inference package, 29 modules
+src/wualt_sleep/                   270 KB   the inference package, 30 modules
+src/wualt_sleep/data/ring_row.py           ring data -> the 32-value row + (30, 13) epochs
+examples/ring_row_vectors.json             parity vectors for the native row builder
+INTEGRATION.md                             how to feed the models from the ring
 ```
 
 Models and what is needed to run them, nothing else. No tests, no training or export
-pipelines, no example scripts, and **not the Sleep Score** — that is a separate
+pipelines, no example scripts beyond the parity-vector generator, and **not the Sleep Score** — that is a separate
 distribution and is not a model. §8 lists everything left out and how to get it.
 
 ONNX total **1.25 MB** across seven files; Python total **2.0 MB** across six. A
@@ -109,7 +116,8 @@ reaches a model.** 8,346 of the 9,743 rows carry at least one NaN, the trees spl
 missingness directly, and a converter that silently flipped the default direction would
 agree on clean data and fail on exactly the nights where a PPG burst dropped. On the
 NaN-only subset the error is still 3.3e-07, and **the 0.5 and 0.7 gate decisions disagree
-on zero rows** — so the state machine fires identically.
+on zero rows** — so the state machine fires identically. (Only the 0.7 gate is used; the
+0.5 entry gate was removed on 02 Sep 2026.)
 
 Everything else is NaN-free by construction: Layer 2 standardises then zero-fills, and both
 WASO stages read `context_matrix` / `night_features` output, which ends in `nan_to_num`.
@@ -126,7 +134,7 @@ WASO stages read `context_matrix` / `night_features` output, which ends in `nan_
 Three things to get right:
 
 **Read `probabilities[:, 1]`, never `label`.** Every threshold in this system is custom —
-0.5 and 0.7 for the onset gates, 0.40 for the merge, 0.5 for each band crossing. `label`
+0.7 for the onset gate, 0.40 for the merge, 0.5 for each band crossing. `label`
 bakes in an implicit 0.5 argmax, which silently replaces the merge threshold and
 over-reports sleep.
 
@@ -168,7 +176,7 @@ model-accuracy claim.
 **The isotonic calibrator** is a step function over breakpoints. There is no faithful ONNX
 operator, so it ships as `layer1_calibrator.json`: interpolate `y` over `x`, clipped at
 both ends, applied to the booster's class-1 probability. **It cannot be skipped** — the
-state machine gates on absolute 0.5 and 0.7, and an uncalibrated score crosses them at the
+state machine gates on an absolute 0.7, and an uncalibrated score crosses it at the
 wrong time.
 
 **Everything between the models is still Python here and has to be written natively.** No
@@ -184,7 +192,7 @@ part of it is in any graph:
 - the 131-input onset vector: two backward lags, their deltas, and a running
   `sustained_still_rows` counter, assembled across rows. **NaN must survive into the
   graph** — do not zero-fill it
-- the state machine (0.5 / 0.7, two-row confirm, six-hour fallback)
+- the state machine (one 0.7 gate on two consecutive rows, six-hour fallback)
 - the 0.40 merge and its "wake if more than half of a row's 30 epochs are wake" rule
 - the band readout: `minimum.accumulate` over the three cumulative probabilities, then
   the count of those ≥ 0.5
@@ -210,7 +218,8 @@ m = load_shipped(fd, "artifacts")                    # all three artifacts, one 
 pipe = SleepPipeline(cfg, fd,
                      onset_detector=m.onset, stage_classifier=m.stage,
                      wake_detector=m.wake, band_estimator=m.band,
-                     subject_id=uid, session_id=sid)
+                     subject_id=uid, session_id=sid,
+                     bedtime=t_bed)              # arms the 6-hour fallback; pass it
 
 for row in night:                                     # one 15-minute row at a time
     out = pipe.push_row(row, accel_epochs=epochs_for_this_row)   # (30, 13) or None
@@ -234,6 +243,11 @@ quality)` where `values` is the **32 features of the dictionary, in dictionary o
 Order is validated on construction. Each model then selects its own columns by name —
 the app never maps columns itself. NaN is legal and meaningful; do not impute.
 
+Build it with `data/ring_row.py` (`build_row_values`) or a native port checked against
+`examples/ring_row_vectors.json`. The 32 values are the **shared** features only; the
+four `layer1`-scope entries are not part of the row. Layer 1 reads no time feature and
+Layer 2 reads no temperature feature — INTEGRATION.md §2 has the full map.
+
 **Epoch features** are the `(30, 13)` block of 30-second accelerometer features covering
 that row, in `ACCEL_EPOCH_FEATURES` order. They must be computed on a **50 Hz uniform
 grid** (`wualt_sleep.data.accel_epochs.GRID_HZ`). Activity counts scale with sample rate,
@@ -255,12 +269,15 @@ one 15-minute row.
   a running `sustained_still_rows` counter. `runtime.adapters.OnsetAdapter` assembles
   these across calls; do not build the vector by hand. Lag history must not cross nights
   (`adapter.reset()`).
-- Calibration is not cosmetic. The state machine gates on **absolute** probability: 0.5 to
-  enter `CANDIDATE_ONSET`, **0.7** to confirm, **2 consecutive rows** to fire. An
-  uncalibrated probability makes those thresholds meaningless.
+- Calibration is not cosmetic. The state machine gates on **absolute** probability: one
+  gate, **0.7**, on **2 consecutive rows** (the 0.5 entry gate was removed on 02 Sep 2026).
+  An uncalibrated probability makes that threshold meaningless.
 - If nothing confirms within **6 hours** of bedtime, a rule-based fallback fires and the
   event carries `via_fallback: true`.
-- `T_onset` is the confirmation instant; `onset_interval` reaches back 15 minutes.
+- `T_onset` is the confirmation instant — the end of the **second** row above 0.7 —
+  and `onset_interval` reaches back 15 minutes. The row accuracy in §7 was scored against
+  the **first** of those rows, so the emitted onset sits one row later than the scored one
+  (an open decision; see INTEGRATION.md §6).
 
 ### Layer 2 — sleep staging (`artifacts/layer2`)
 
@@ -370,7 +387,11 @@ project and can be sent on request.
   §2 for how the pipeline behaves without it.
 - **No tests.** The suite — 248 tests covering the loaders, the feature contract, the
   state machine, the merge and the WASO bands — stays in the repo.
-- **No example scripts, no training or export pipelines, no analysis scripts.**
+- **No training or export pipelines, no analysis scripts.**
+- **No corpus adapters.** `data/dreamt.py` and `data/bidsleep.py` built the training rows
+  and hold the exact definitions of the HR-level, temperature, time and baseline features.
+  Until they are published, `data/ring_row.py` is the ring-side reference and marks which
+  of its definitions are provisional.
 - **No `pyproject.toml`.** This package is not pip-installable; §2 lists the dependencies
   directly.
 - **No training data.** DREAMT and BIDSleep are third-party corpora under their own

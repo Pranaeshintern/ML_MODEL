@@ -2,7 +2,7 @@
 # Every number here traces to a section of WUALT_Sleep_Pipeline_v2_1.docx.
 # Nothing in this file should be duplicated as a literal in code.
 
-pipeline_version: "0.1.0"
+pipeline_version: "0.1.1"
 
 aggregation:
   row_minutes: 15
@@ -24,8 +24,11 @@ aggregation:
 state_machine:
   # ONE gate. The 0.5 candidate threshold was removed 02 Sep 2026: measured on 353
   # nights it selected the same row as 0.7 on 97.5% of them, because P(asleep) is
-  # near-binary (0.95% of rows fall in 0.05-0.95). T_onset is the FIRST of the two
-  # consecutive rows above this threshold.
+  # near-binary (0.95% of rows fall in 0.05-0.95).
+  # The emitted OnsetEvent.confirmed_at is the END of the SECOND consecutive row above
+  # this threshold. Layer 1's row accuracy was scored against the FIRST of them, so the
+  # emitted onset is one row later than the scored one (open decision; see
+  # INTEGRATION.md). Corrected 0.1.1: this comment used to say FIRST.
   onset_threshold: 0.7             # P(onset) > this on `onset_confirm_rows` rows -> ASLEEP
   onset_confirm_rows: 2            # sets the minimum confirmation lag: rows x 15 min
   wake_confirm_rows: 2             # Wake x2 rows OR motion+HR jump -> WAKE_DET
